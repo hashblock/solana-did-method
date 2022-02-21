@@ -1,0 +1,25 @@
+[package]
+name = "bar"
+edition = "2021"
+version = "0.1.0"
+
+[dependencies]
+borsh = "0.9.3"
+num-derive = "0.3"
+num-traits = "0.2"
+solana-program = "1.9.8"
+thiserror = "1.0"
+
+[dev-dependencies]
+assert_matches = "1.5.0"
+solana-program-test = "1.9.8"
+solana-sdk = "1.9.8"
+
+[features]
+test-bpf = []
+
+[lib]
+plugin = false
+proc-macro = false
+crate-type = ["cdylib", "lib"]
+required-features = []
