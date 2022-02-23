@@ -9,7 +9,7 @@ use solana_program::{
 };
 
 // Set by cargo-solana
-const NAME: &str = "bar";
+const NAME: &str = "solana_keri";
 
 entrypoint!(entry_point);
 pub fn entry_point(
@@ -17,15 +17,7 @@ pub fn entry_point(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-
-    // This is expensive, delete when satisfied
-    msg!(
-        "Program {} id: {} accounts: {} data: {:?}",
-        NAME,
-        program_id,
-        accounts.len(),
-        instruction_data
-    );
+    msg!("Entry point {} with signer {:?}", NAME, accounts[0].key);
     // Normal processing
     if let Err(error) = process(program_id, accounts, instruction_data) {
         // catch the error so we can print it
@@ -57,7 +49,7 @@ mod test {
     use solana_sdk::{
         account::Account, signature::Keypair, signer::Signer, transaction::Transaction,
     };
-    use std::time::Duration;
+    use std::collections::BTreeMap;
 
     /// Sets up the Program test and initializes 'n' program_accounts
     async fn setup(
@@ -81,163 +73,27 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_initialize_pass() {
+    async fn test_inception_pass() {
         let program_id = Pubkey::new_unique();
-        let account_pubkey = Pubkey::new_unique();
 
         // Standup runtime testing
-        let (mut banks_client, payer, recent_blockhash) =
-            setup(&program_id, &[account_pubkey]).await;
+        let (mut banks_client, payer, recent_blockhash) = setup(&program_id, &[]).await;
 
-        // Verify account has clean slate
-        let acc = banks_client
-            .get_account(account_pubkey)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(acc.data[0], 0);
-        assert_eq!(acc.data[1], 0);
-        assert_eq!(acc.data[2], 0);
+        let sol_keri_did = ["did", "sol", "keri", &payer.pubkey().to_string()].join(":");
+        let mut keri_ref = BTreeMap::<String, String>::new();
+        keri_ref.insert("i".to_string(), sol_keri_did);
+        keri_ref.insert("ri".to_string(), "did:keri:local_db".to_string());
 
-        let macc = vec![
-            AccountMeta::new(account_pubkey, false),
-            AccountMeta::new(payer.pubkey(), true),
-        ];
+        let macc = vec![AccountMeta::new(payer.pubkey(), false)];
         // Build the transaction and verify execution
         let ix = [Instruction::new_with_borsh(
             program_id,
-            &ProgramInstruction::InitializeAccount,
+            &ProgramInstruction::InceptionEvent(keri_ref),
             macc,
         )];
         let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
         transaction.sign(&[&payer], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        // Verify initialized
-        let acc = banks_client
-            .get_account(account_pubkey)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(acc.data[0], 1);
-        assert_eq!(acc.data[1], 1);
-        assert_eq!(acc.data[2], 0);
-    }
-
-    #[tokio::test]
-    async fn test_double_initialize_fail() {
-        let program_id = Pubkey::new_unique();
-        let account_pubkey = Pubkey::new_unique();
-
-        // Standup runtime testing
-        let (mut banks_client, payer, recent_blockhash) =
-            setup(&program_id, &[account_pubkey]).await;
-
-        // Setup accounts for program entry point
-        let macc = vec![
-            AccountMeta::new(account_pubkey, false),
-            AccountMeta::new(payer.pubkey(), true),
-        ];
-
-        // Setup initialization instruction
-        let ix = [Instruction::new_with_borsh(
-            program_id,
-            &ProgramInstruction::InitializeAccount,
-            macc,
-        )];
-
-        // Submit initialize instruction
-        let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
-        transaction.sign(&[&payer], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        // Wait for new blockhash
-        tokio::time::sleep(Duration::from_millis(500)).await;
-        let new_blockhash = banks_client.get_latest_blockhash().await.unwrap();
-        assert_ne!(recent_blockhash, new_blockhash);
-
-        // Submit second transaction which fill fail on already initialized
-        let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
-        transaction.sign(&[&payer], new_blockhash);
         let result = banks_client.process_transaction(transaction).await;
-        assert!(result.is_err());
-    }
-    #[tokio::test]
-    async fn test_setting_content_pass() {
-        let program_id = Pubkey::new_unique();
-        let account_pubkey = Pubkey::new_unique();
-
-        // Standup runtime testing
-        let (mut banks_client, payer, recent_blockhash) =
-            setup(&program_id, &[account_pubkey]).await;
-
-        // Build the transaction and verify execution
-        let ix = [Instruction::new_with_borsh(
-            program_id,
-            &ProgramInstruction::InitializeAccount,
-            vec![
-                AccountMeta::new(account_pubkey, false),
-                AccountMeta::new(payer.pubkey(), true),
-            ],
-        )];
-        let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
-        transaction.sign(&[&payer], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-
-        // Verify initialized
-        let acc = banks_client
-            .get_account(account_pubkey)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(acc.data[0], 1);
-        assert_eq!(acc.data[1], 1);
-        assert_eq!(acc.data[2], 0);
-
-        // Build the conent setting transaction and verify execution
-        let ix = [Instruction::new_with_borsh(
-            program_id,
-            &ProgramInstruction::SetContent(1u8),
-            vec![
-                AccountMeta::new(account_pubkey, false),
-                AccountMeta::new(payer.pubkey(), true),
-            ],
-        )];
-        let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
-        transaction.sign(&[&payer], recent_blockhash);
-        assert_matches!(banks_client.process_transaction(transaction).await, Ok(()));
-        // Verify initialized
-        let acc = banks_client
-            .get_account(account_pubkey)
-            .await
-            .unwrap()
-            .unwrap();
-        assert_eq!(acc.data[0], 1);
-        assert_eq!(acc.data[1], 1);
-        assert_eq!(acc.data[2], 1);
-    }
-
-    #[tokio::test]
-    async fn test_setting_content_not_initialized_fail() {
-        let program_id = Pubkey::new_unique();
-        let account_pubkey = Pubkey::new_unique();
-
-        // Standup runtime testing
-        let (mut banks_client, payer, recent_blockhash) =
-            setup(&program_id, &[account_pubkey]).await;
-
-        // Build the conent setting transaction and verify execution
-        let ix = [Instruction::new_with_borsh(
-            program_id,
-            &ProgramInstruction::SetContent(1u8),
-            vec![
-                AccountMeta::new(account_pubkey, false),
-                AccountMeta::new(payer.pubkey(), true),
-            ],
-        )];
-        let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
-        transaction.sign(&[&payer], recent_blockhash);
-        let result = banks_client.process_transaction(transaction).await;
-        assert!(result.is_err());
+        assert_matches!(result, Ok(()));
     }
 }

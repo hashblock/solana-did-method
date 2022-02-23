@@ -13,12 +13,8 @@ pub enum CustomProgramError {
     // Throw this error when attempting to
     // initialize account that is already
     // initialized
-    #[error("Account Already Initialized")]
-    AccountAlreadyInitializedError,
-    // Throw this error when there is a
-    // data version error detected
-    #[error("Data version mismatch")]
-    DataVersionMismatchError,
+    #[error("Invalid DID Reference")]
+    InvalidDidReference,
     // Add custom errors here
 }
 
@@ -44,11 +40,8 @@ impl PrintProgramError for CustomProgramError {
         E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
     {
         match self {
-            CustomProgramError::AccountAlreadyInitializedError => {
-                println!("ERROR: Account Already Initialized")
-            }
-            CustomProgramError::DataVersionMismatchError => {
-                println!("ERROR: Data version mismatch")
+            CustomProgramError::InvalidDidReference => {
+                println!("Not a valid DID reference")
             }
         }
     }

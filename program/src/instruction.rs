@@ -1,13 +1,14 @@
 //! @brief Program instruction enum
 //!
+use std::collections::BTreeMap;
+
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{borsh::try_from_slice_unchecked, program_error::ProgramError};
 
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
 /// All custom program instructions
 pub enum ProgramInstruction {
-    InitializeAccount,
-    SetContent(u8),
+    InceptionEvent(BTreeMap<String, String>),
 }
 
 impl ProgramInstruction {
@@ -16,8 +17,7 @@ impl ProgramInstruction {
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
         let payload = try_from_slice_unchecked::<ProgramInstruction>(input).unwrap();
         match payload {
-            ProgramInstruction::InitializeAccount => Ok(payload),
-            ProgramInstruction::SetContent(_) => Ok(payload),
+            ProgramInstruction::InceptionEvent(_) => Ok(payload),
         }
     }
 }
