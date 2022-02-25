@@ -1,12 +1,17 @@
+//! cli for managing sol::keri dids and keys
 mod errors;
-pub use errors::AppResult;
-fn main() -> AppResult<()> {
+mod utils;
+pub use errors::SolKeriResult;
+pub use utils::instruction_from_transaction;
+
+fn main() -> SolKeriResult<()> {
     println!("Hello, world!");
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+
     use super::*;
     use keri::{
         derivation::{basic::Basic, self_addressing::SelfAddressing},
@@ -19,7 +24,7 @@ mod tests {
         prefix::{BasicPrefix, Prefix},
     };
     use solana_client::rpc_client::RpcClient;
-    use solana_keri::instruction::ProgramInstruction;
+    use solana_keri::instruction::SolKeriInstruction;
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::{
         instruction::{AccountMeta, Instruction},
@@ -30,7 +35,6 @@ mod tests {
         transaction::Transaction,
     };
     use solana_test_validator::{TestValidator, TestValidatorGenesis};
-    use solana_transaction_status::UiTransactionEncoding;
     use std::{collections::BTreeMap, path::PathBuf, str::FromStr, thread::sleep, time::Duration};
 
     /// Location/Name of ProgramTestGenesis ledger
@@ -42,7 +46,7 @@ mod tests {
     const PROG_NAME: &str = "solana_keri";
 
     /// Setup the test validator with predefined properties
-    pub fn setup_validator() -> AppResult<(TestValidator, Keypair, Pubkey)> {
+    pub fn setup_validator() -> SolKeriResult<(TestValidator, Keypair, Pubkey)> {
         let program_id = Pubkey::new_unique();
         // Extend environment variable to include our program location
         std::env::set_var("BPF_OUT_DIR", PROG_PATH);
@@ -70,7 +74,7 @@ mod tests {
 
     /// Convenience function to remove existing ledger before TestValidatorGenesis setup
     /// maps to `solana-test-validator ... --reset`
-    pub fn clean_ledger_setup_validator() -> AppResult<(TestValidator, Keypair, Pubkey)> {
+    pub fn clean_ledger_setup_validator() -> SolKeriResult<(TestValidator, Keypair, Pubkey)> {
         if PathBuf::from_str(LEDGER_PATH).unwrap().exists() {
             std::fs::remove_dir_all(LEDGER_PATH).unwrap();
         }
@@ -93,12 +97,13 @@ mod tests {
         }
         (sol_keys, keri_keys)
     }
+
     /// Submits a transaction with programs instruction
     fn submit_transaction(
         rpc_client: &RpcClient,
         wallet_signer: &dyn Signer,
         instructions: Vec<Instruction>,
-    ) -> AppResult<Signature> {
+    ) -> SolKeriResult<Signature> {
         let mut transaction =
             Transaction::new_unsigned(Message::new(&instructions, Some(&wallet_signer.pubkey())));
         let recent_blockhash = rpc_client.get_latest_blockhash().unwrap();
@@ -115,7 +120,7 @@ mod tests {
         pub key_set_and_prefix_next: (Vec<Keypair>, Vec<BasicPrefix>),
     }
 
-    fn create_inception_event(key_count: usize, threshold: u64) -> AppResult<InceptionData> {
+    fn create_inception_event(key_count: usize, threshold: u64) -> SolKeriResult<InceptionData> {
         let first_set = get_keys_and_prefix(key_count);
         let next_set = get_keys_and_prefix(key_count);
         let (_, keri_prefix) = &first_set;
@@ -140,7 +145,7 @@ mod tests {
     }
 
     #[test]
-    fn test_inception_pass() -> AppResult<()> {
+    fn test_inception_pass() -> SolKeriResult<()> {
         let inception_data = create_inception_event(2, 1)?;
         let prefix = inception_data.event_message.event.prefix.clone();
         assert_eq!(prefix.to_str().len(), 44);
@@ -154,45 +159,53 @@ mod tests {
     }
 
     #[test]
-    fn test_program_inception_pass() -> AppResult<()> {
+    fn test_program_inception_pass() -> SolKeriResult<()> {
+        print!("Generating inception/DID... ");
         let inception_data = create_inception_event(2, 1)?;
         let prefix = inception_data.event_message.event.prefix.clone();
         assert_eq!(prefix.to_str().len(), 44);
+        println!("{:?}", prefix.to_str());
+
+        println!("Creating KERI reference doc");
         let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
         let keri_vdr = "did:keri:local_db".to_string();
         let mut keri_ref = BTreeMap::<String, String>::new();
         keri_ref.insert("i".to_string(), sol_keri_did);
         keri_ref.insert("ri".to_string(), keri_vdr);
         // Spawn test validator node
+        println!("Starting local validator node");
         let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
         // Get the RpcClient
         let connection = test_validator.get_rpc_client();
+
         // Capture our programs log statements
-        solana_logger::setup_with_default("solana_runtime::message=debug");
+        // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
+
+        println!("Submitting Solana-Keri Inception Instruction");
         // This example doesn't require sending any accounts to program
         let accounts = &[AccountMeta::new(payer.pubkey(), true)];
         // Build instruction array and submit transaction
         let txn = submit_transaction(
             &connection,
             &payer,
-            // Add two (2) instructions to transaction
-            // Replace with instructions that make sense for your program
             [Instruction::new_with_borsh(
                 program_pk,
-                &ProgramInstruction::InceptionEvent(keri_ref),
+                &SolKeriInstruction::InceptionEvent(keri_ref),
                 accounts.to_vec(),
             )]
             .to_vec(),
         );
         assert!(txn.is_ok());
-        println!("Tx count = {:?}", connection.get_transaction_count());
         let signature = txn.unwrap();
-        sleep(Duration::from_millis(40000));
-        let tx_post = connection
-            .get_transaction(&signature, UiTransactionEncoding::Json)
-            .unwrap();
-        println!("{:?}", tx_post);
-
+        println!("Success... tx signature = {:?}", signature);
+        println!("Delay 20s for block completion. Should use websocket monitoring");
+        sleep(Duration::from_secs(20));
+        println!("Fetching transaction for signature {:?}", signature);
+        println!(
+            "{:?}",
+            instruction_from_transaction(&connection, &signature)
+        );
         Ok(())
     }
 }

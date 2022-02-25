@@ -31,7 +31,7 @@ pub fn entry_point(
 #[cfg(test)]
 mod test {
 
-    use crate::instruction::ProgramInstruction;
+    use crate::instruction::SolKeriInstruction;
 
     use super::*;
     use assert_matches::*;
@@ -88,7 +88,7 @@ mod test {
         // Build the transaction and verify execution
         let ix = [Instruction::new_with_borsh(
             program_id,
-            &ProgramInstruction::InceptionEvent(keri_ref),
+            &SolKeriInstruction::InceptionEvent(keri_ref),
             macc,
         )];
         let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));

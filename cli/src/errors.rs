@@ -4,15 +4,16 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 #[error("...")]
-pub enum ApplicationError {
-    // Throw this error when attempting to
-    // initialize account that is already
-    // initialized
-    // #[error("Invalid DID Reference")]
-    // InvalidDidReference,
+pub enum SolKeriCliError {
+    #[error("Failed getting transaction")]
+    GetTransactionError,
+    #[error("Failed decoding transaction")]
+    DecodeTransactionError,
     // Add custom errors here
     #[error("Keri Error")]
     KeriError(#[from] keri::error::Error),
+    #[error("Io Error")]
+    IoError(#[from] std::io::Error),
 }
 
-pub type AppResult<T> = std::result::Result<T, ApplicationError>;
+pub type SolKeriResult<T> = std::result::Result<T, SolKeriCliError>;

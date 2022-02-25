@@ -7,17 +7,17 @@ use solana_program::{borsh::try_from_slice_unchecked, program_error::ProgramErro
 
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
 /// All custom program instructions
-pub enum ProgramInstruction {
+pub enum SolKeriInstruction {
     InceptionEvent(BTreeMap<String, String>),
 }
 
-impl ProgramInstruction {
+impl SolKeriInstruction {
     /// Unpack inbound buffer to associated Instruction
     /// The expected format for input is a Borsh serialized vector
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
-        let payload = try_from_slice_unchecked::<ProgramInstruction>(input).unwrap();
+        let payload = try_from_slice_unchecked::<SolKeriInstruction>(input).unwrap();
         match payload {
-            ProgramInstruction::InceptionEvent(_) => Ok(payload),
+            SolKeriInstruction::InceptionEvent(_) => Ok(payload),
         }
     }
 }

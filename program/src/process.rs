@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::{error::CustomProgramError, instruction::ProgramInstruction};
+use crate::{error::CustomProgramError, instruction::SolKeriInstruction};
 
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
@@ -55,7 +55,7 @@ pub fn process(
     }
 
     // Unpack the inbound data, mapping instruction to appropriate function
-    match ProgramInstruction::unpack(instruction_data)? {
-        ProgramInstruction::InceptionEvent(did_ref) => verify_inception(did_ref),
+    match SolKeriInstruction::unpack(instruction_data)? {
+        SolKeriInstruction::InceptionEvent(did_ref) => verify_inception(did_ref),
     }
 }
