@@ -10,11 +10,10 @@ use thiserror::Error;
 #[derive(Debug, Error, FromPrimitive)]
 #[error("...")]
 pub enum CustomProgramError {
-    // Throw this error when attempting to
-    // initialize account that is already
-    // initialized
     #[error("Invalid DID Reference")]
     InvalidDidReference,
+    #[error("Owner is not signer for DID")]
+    OwnerNotSignerError,
     // Add custom errors here
 }
 
@@ -42,6 +41,9 @@ impl PrintProgramError for CustomProgramError {
         match self {
             CustomProgramError::InvalidDidReference => {
                 println!("Not a valid DID reference")
+            }
+            CustomProgramError::OwnerNotSignerError => {
+                println!("Owner not equal to signer")
             }
         }
     }

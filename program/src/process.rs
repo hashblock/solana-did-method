@@ -1,6 +1,6 @@
 //! Program core processing module
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, str::FromStr};
 
 use crate::{error::CustomProgramError, instruction::SolKeriInstruction};
 
@@ -14,8 +14,8 @@ use solana_program::{
 /// in the array
 /// Change this to suite your account logic
 fn check_account_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
-    // Accounts must be owned by the program.
-    for account in accounts.iter().take(accounts.len() - 1) {
+    // First account is wallet so, any subsequent in this example must be owned by the program.
+    for account in &accounts[1..] {
         if account.owner != program_id {
             msg!(
                 "Fail: Account owner is {} and it should be {}.",
@@ -28,17 +28,25 @@ fn check_account_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
     Ok(())
 }
 
-fn verify_inception(did_ref: BTreeMap<String, String>) -> ProgramResult {
+fn verify_inception(signer: &AccountInfo, did_ref: BTreeMap<String, String>) -> ProgramResult {
     msg!("Processing DID:SOL:KERI Inception");
-    if did_ref.keys().len() != 2 {
+    if did_ref.keys().len() != 3 {
         Err(CustomProgramError::InvalidDidReference.into())
-    } else if did_ref.get(&"i".to_string()).is_none() {
+    } else if !did_ref.contains_key(&"i".to_string()) {
         Err(CustomProgramError::InvalidDidReference.into())
-    } else if did_ref.get(&"ri".to_string()).is_none() {
+    } else if !did_ref.contains_key(&"ri".to_string()) {
+        Err(CustomProgramError::InvalidDidReference.into())
+    } else if !did_ref.contains_key(&"owner".to_string()) {
         Err(CustomProgramError::InvalidDidReference.into())
     } else {
-        msg!("Valdated DID Reference {:?}", did_ref);
-        Ok(())
+        if signer
+            .key
+            .eq(&Pubkey::from_str(did_ref.get(&"owner".to_string()).unwrap()).unwrap())
+        {
+            Ok(())
+        } else {
+            Err(CustomProgramError::OwnerNotSignerError.into())
+        }
     }
 }
 
@@ -56,6 +64,6 @@ pub fn process(
 
     // Unpack the inbound data, mapping instruction to appropriate function
     match SolKeriInstruction::unpack(instruction_data)? {
-        SolKeriInstruction::InceptionEvent(did_ref) => verify_inception(did_ref),
+        SolKeriInstruction::InceptionEvent(did_ref) => verify_inception(&accounts[0], did_ref),
     }
 }

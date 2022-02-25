@@ -175,16 +175,18 @@ mod tests {
         // Spawn test validator node
         println!("Starting local validator node");
         let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
+        // Identify the payer as the owner of the DID
+        keri_ref.insert("owner".to_string(), payer.pubkey().to_string());
         // Get the RpcClient
         let connection = test_validator.get_rpc_client();
 
         // Capture our programs log statements
         // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
-        // solana_logger::setup_with_default("solana_runtime::message=debug");
+        solana_logger::setup_with_default("solana_runtime::message=debug");
 
         println!("Submitting Solana-Keri Inception Instruction");
         // This example doesn't require sending any accounts to program
-        let accounts = &[AccountMeta::new(payer.pubkey(), true)];
+        let accounts = &[AccountMeta::new_readonly(payer.pubkey(), true)];
         // Build instruction array and submit transaction
         let txn = submit_transaction(
             &connection,
@@ -207,5 +209,13 @@ mod tests {
             instruction_from_transaction(&connection, &signature)
         );
         Ok(())
+    }
+
+    #[test]
+    fn slicing() {
+        let accounts = vec![Pubkey::new_unique()];
+        for pk in &accounts[1..] {
+            println!("{:?}", pk)
+        }
     }
 }

@@ -83,6 +83,7 @@ mod test {
         let mut keri_ref = BTreeMap::<String, String>::new();
         keri_ref.insert("i".to_string(), sol_keri_did);
         keri_ref.insert("ri".to_string(), "did:keri:local_db".to_string());
+        keri_ref.insert("owner".to_string(), payer.pubkey().to_string());
 
         let macc = vec![AccountMeta::new(payer.pubkey(), false)];
         // Build the transaction and verify execution
