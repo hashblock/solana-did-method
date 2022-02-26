@@ -8,8 +8,10 @@ edition = "2021"
 [dependencies]
 
 borsh  = "0.9.3"
+bs58 = "0.4.0"
 # num-derive = "0.3"
 # num-traits = "0.2"
+ed25519-dalek = "1.0.1"
 keri = "0.8.1"
 solana-client = "1.9.8"
 solana-keri = {path="../program",version="0.1.0"}

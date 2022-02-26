@@ -15,10 +15,16 @@ pub fn instruction_from_transaction(
 ) -> SolKeriResult<SolKeriInstruction> {
     let tx_post = connection.get_transaction(&signature, UiTransactionEncoding::Base64);
     if tx_post.is_ok() {
-        match tx_post.unwrap().transaction.transaction.decode() {
-            Some(tx) => Ok(SolKeriInstruction::try_from_slice(
-                &tx.message.instructions[0].data,
-            )?),
+        let dc = tx_post.unwrap().transaction.transaction.decode();
+        // println!("{:?}", dc);
+        match dc {
+            Some(tx) => {
+                println!("Proof instruction {:?}", tx.message.instructions[0]);
+                println!("Program instruction {:?}", tx.message.instructions[1]);
+                Ok(SolKeriInstruction::try_from_slice(
+                    &tx.message.instructions[1].data,
+                )?)
+            }
             None => Err(SolKeriCliError::DecodeTransactionError),
         }
     } else {

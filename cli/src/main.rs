@@ -1,4 +1,5 @@
 //! cli for managing sol::keri dids and keys
+mod clparse;
 mod errors;
 mod utils;
 pub use errors::SolKeriResult;
@@ -13,6 +14,7 @@ fn main() -> SolKeriResult<()> {
 mod tests {
 
     use super::*;
+    use borsh::BorshSerialize;
     use keri::{
         derivation::{basic::Basic, self_addressing::SelfAddressing},
         event::{
@@ -27,6 +29,7 @@ mod tests {
     use solana_keri::instruction::SolKeriInstruction;
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::{
+        ed25519_instruction,
         instruction::{AccountMeta, Instruction},
         message::Message,
         pubkey::Pubkey,
@@ -102,13 +105,14 @@ mod tests {
     fn submit_transaction(
         rpc_client: &RpcClient,
         wallet_signer: &dyn Signer,
+        wallet_payer: &dyn Signer,
         instructions: Vec<Instruction>,
     ) -> SolKeriResult<Signature> {
         let mut transaction =
-            Transaction::new_unsigned(Message::new(&instructions, Some(&wallet_signer.pubkey())));
+            Transaction::new_unsigned(Message::new(&instructions, Some(&wallet_payer.pubkey())));
         let recent_blockhash = rpc_client.get_latest_blockhash().unwrap();
         transaction
-            .try_sign(&vec![wallet_signer], recent_blockhash)
+            .try_sign(&vec![wallet_signer, wallet_payer], recent_blockhash)
             .unwrap();
         Ok(rpc_client
             .send_and_confirm_transaction(&transaction)
@@ -143,11 +147,24 @@ mod tests {
             key_set_and_prefix_next: next_set,
         })
     }
+    #[inline]
+    fn sign_event(event: &EventMessage, signer: &dyn Signer) -> SolKeriResult<Signature> {
+        Ok(signer.sign_message(&event.serialize()?))
+    }
 
     #[test]
     fn test_inception_pass() -> SolKeriResult<()> {
         let inception_data = create_inception_event(2, 1)?;
+        // println!("{:?}\n\n", inception_data.event_message);
+        let sol_keyp = &inception_data.key_set_and_prefix.0[0];
         let prefix = inception_data.event_message.event.prefix.clone();
+        let icp_signature = sign_event(&inception_data.event_message, sol_keyp)?;
+        let icp_serialized = inception_data.event_message.serialize()?;
+        println!("Sig = {:?}", icp_signature);
+        println!(
+            "Ver {}",
+            icp_signature.verify(&sol_keyp.pubkey().to_bytes(), &icp_serialized)
+        );
         assert_eq!(prefix.to_str().len(), 44);
         let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
         let keri_vdr = "did:keri:local_db".to_string();
@@ -155,6 +172,10 @@ mod tests {
         keri_ref.insert("i".to_string(), sol_keri_did);
         keri_ref.insert("ri".to_string(), keri_vdr);
         println!("Tx doc {:?}", keri_ref);
+        println!("Msg = {:?}", bs58::encode(icp_serialized).into_string());
+        println!("Signature = {:?}", icp_signature);
+        println!("Public Key signer {:?}", sol_keyp.pubkey());
+
         Ok(())
     }
 
@@ -175,27 +196,40 @@ mod tests {
         // Spawn test validator node
         println!("Starting local validator node");
         let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
-        // Identify the payer as the owner of the DID
-        keri_ref.insert("owner".to_string(), payer.pubkey().to_string());
+        // Setup the signature verification instruction usingthe serialized key event
+        let sol_keyp = &inception_data.key_set_and_prefix.0[0];
+        let tx_kp = Keypair::new();
+        keri_ref.insert("owner".to_string(), tx_kp.pubkey().to_string());
+        let privkey = ed25519_dalek::Keypair::from_bytes(&sol_keyp.to_bytes()).unwrap();
+        let ix = ed25519_instruction::new_ed25519_instruction(&privkey, &keri_ref.try_to_vec()?);
+
         // Get the RpcClient
         let connection = test_validator.get_rpc_client();
 
         // Capture our programs log statements
         // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
-        solana_logger::setup_with_default("solana_runtime::message=debug");
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
 
         println!("Submitting Solana-Keri Inception Instruction");
-        // This example doesn't require sending any accounts to program
-        let accounts = &[AccountMeta::new_readonly(payer.pubkey(), true)];
+
+        let accounts = &[
+            AccountMeta::new_readonly(tx_kp.pubkey(), true),
+            AccountMeta::new_readonly(payer.pubkey(), true),
+        ];
+        // let accounts = &[AccountMeta::new_readonly(payer.pubkey(), true)];
         // Build instruction array and submit transaction
         let txn = submit_transaction(
             &connection,
+            &tx_kp, //payer,
             &payer,
-            [Instruction::new_with_borsh(
-                program_pk,
-                &SolKeriInstruction::InceptionEvent(keri_ref),
-                accounts.to_vec(),
-            )]
+            [
+                ix,
+                Instruction::new_with_borsh(
+                    program_pk,
+                    &SolKeriInstruction::InceptionEvent(keri_ref),
+                    accounts.to_vec(),
+                ),
+            ]
             .to_vec(),
         );
         assert!(txn.is_ok());

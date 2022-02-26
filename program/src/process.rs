@@ -15,7 +15,7 @@ use solana_program::{
 /// Change this to suite your account logic
 fn check_account_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     // First account is wallet so, any subsequent in this example must be owned by the program.
-    for account in &accounts[1..] {
+    for account in &accounts[2..] {
         if account.owner != program_id {
             msg!(
                 "Fail: Account owner is {} and it should be {}.",
