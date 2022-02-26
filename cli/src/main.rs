@@ -26,7 +26,7 @@ mod tests {
         prefix::{BasicPrefix, Prefix},
     };
     use solana_client::rpc_client::RpcClient;
-    use solana_keri::instruction::SolKeriInstruction;
+    use solana_did_method::instruction::SolKeriInstruction;
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::{
         ed25519_instruction,
@@ -46,7 +46,7 @@ mod tests {
     const PROG_PATH: &str = "../target/deploy/";
     /// Program name from program Cargo.toml
     /// FILL IN WITH YOUR PROGRAM
-    const PROG_NAME: &str = "solana_keri";
+    const PROG_NAME: &str = "solana_did_method";
 
     /// Setup the test validator with predefined properties
     pub fn setup_validator() -> SolKeriResult<(TestValidator, Keypair, Pubkey)> {

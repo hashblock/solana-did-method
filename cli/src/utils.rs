@@ -2,7 +2,7 @@
 
 use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
-use solana_keri::instruction::SolKeriInstruction;
+use solana_did_method::instruction::SolKeriInstruction;
 use solana_sdk::signature::Signature;
 use solana_transaction_status::UiTransactionEncoding;
 

@@ -597,14 +597,14 @@ dependencies = [
 
 [[package]]
 name = "cli"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "borsh",
  "bs58",
  "ed25519-dalek",
  "keri",
  "solana-client",
- "solana-keri",
+ "solana-did-method",
  "solana-logger",
  "solana-rpc",
  "solana-sdk",
@@ -4461,6 +4461,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "solana-did-method"
+version = "0.2.0"
+dependencies = [
+ "assert_matches",
+ "borsh",
+ "num-derive",
+ "num-traits",
+ "solana-program",
+ "solana-program-test",
+ "solana-sdk",
+ "thiserror",
+]
+
+[[package]]
 name = "solana-entry"
 version = "1.9.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4577,20 +4591,6 @@ dependencies = [
  "solana-streamer",
  "solana-version",
  "solana-vote-program",
- "thiserror",
-]
-
-[[package]]
-name = "solana-keri"
-version = "0.1.0"
-dependencies = [
- "assert_matches",
- "borsh",
- "num-derive",
- "num-traits",
- "solana-program",
- "solana-program-test",
- "solana-sdk",
  "thiserror",
 ]
 
