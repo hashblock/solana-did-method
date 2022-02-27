@@ -1,4 +1,4 @@
-//! Utility functions
+//! Miscellaneous utility functions
 
 use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;

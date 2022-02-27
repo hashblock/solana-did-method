@@ -70,172 +70,168 @@ mod tests {
         setup_validator()
     }
 
-    /// Generic function that produces Solana Keypairs and derived KERI BasicPrefixs
-    fn get_keys_and_prefix(key_count: usize) -> (Vec<Keypair>, Vec<BasicPrefix>) {
-        let mut sol_keys = Vec::<Keypair>::new();
-        let mut keri_keys = Vec::<BasicPrefix>::new();
+    // /// Generic function that produces Solana Keypairs and derived KERI BasicPrefixs
+    // fn get_keys_and_prefix(key_count: usize) -> (Vec<Keypair>, Vec<BasicPrefix>) {
+    //     let mut sol_keys = Vec::<Keypair>::new();
+    //     let mut keri_keys = Vec::<BasicPrefix>::new();
 
-        for _ in 0..key_count {
-            let sol_key = Keypair::new();
-            let keri_bp = BasicPrefix::new(
-                Basic::Ed25519,
-                PublicKey::new(sol_key.pubkey().to_bytes().to_vec()),
-            );
-            sol_keys.push(sol_key);
-            keri_keys.push(keri_bp);
-        }
-        (sol_keys, keri_keys)
-    }
+    //     for _ in 0..key_count {
+    //         let sol_key = Keypair::new();
+    //         let keri_bp = BasicPrefix::new(
+    //             Basic::Ed25519,
+    //             PublicKey::new(sol_key.pubkey().to_bytes().to_vec()),
+    //         );
+    //         sol_keys.push(sol_key);
+    //         keri_keys.push(keri_bp);
+    //     }
+    //     (sol_keys, keri_keys)
+    // }
 
-    /// Submits a transaction with programs instruction
-    fn submit_transaction(
-        rpc_client: &RpcClient,
-        wallet_signer: &dyn Signer,
-        wallet_payer: &dyn Signer,
-        instructions: Vec<Instruction>,
-    ) -> SolKeriResult<Signature> {
-        let mut transaction =
-            Transaction::new_unsigned(Message::new(&instructions, Some(&wallet_payer.pubkey())));
-        let recent_blockhash = rpc_client.get_latest_blockhash().unwrap();
-        transaction
-            .try_sign(&vec![wallet_signer, wallet_payer], recent_blockhash)
-            .unwrap();
-        Ok(rpc_client
-            .send_and_confirm_transaction(&transaction)
-            .unwrap())
-    }
-    pub struct InceptionData {
-        pub event_message: EventMessage,
-        pub key_set_and_prefix: (Vec<Keypair>, Vec<BasicPrefix>),
-        pub key_set_and_prefix_next: (Vec<Keypair>, Vec<BasicPrefix>),
-    }
+    // /// Submits a transaction with programs instruction
+    // fn submit_transaction(
+    //     rpc_client: &RpcClient,
+    //     wallet_signer: &dyn Signer,
+    //     wallet_payer: &dyn Signer,
+    //     instructions: Vec<Instruction>,
+    // ) -> SolKeriResult<Signature> {
+    //     let mut transaction =
+    //         Transaction::new_unsigned(Message::new(&instructions, Some(&wallet_payer.pubkey())));
+    //     let recent_blockhash = rpc_client.get_latest_blockhash().unwrap();
+    //     transaction
+    //         .try_sign(&vec![wallet_signer, wallet_payer], recent_blockhash)
+    //         .unwrap();
+    //     Ok(rpc_client
+    //         .send_and_confirm_transaction(&transaction)
+    //         .unwrap())
+    // }
+    // pub struct InceptionData {
+    //     pub event_message: EventMessage,
+    //     pub key_set_and_prefix: (Vec<Keypair>, Vec<BasicPrefix>),
+    //     pub key_set_and_prefix_next: (Vec<Keypair>, Vec<BasicPrefix>),
+    // }
 
-    fn create_inception_event(key_count: usize, threshold: u64) -> SolKeriResult<InceptionData> {
-        let first_set = get_keys_and_prefix(key_count);
-        let next_set = get_keys_and_prefix(key_count);
-        let (_, keri_prefix) = &first_set;
-        let (_, keri_prefix_next) = &next_set;
+    // fn create_inception_event(key_count: usize, threshold: u64) -> SolKeriResult<InceptionData> {
+    //     let first_set = get_keys_and_prefix(key_count);
+    //     let next_set = get_keys_and_prefix(key_count);
+    //     let (_, keri_prefix) = &first_set;
+    //     let (_, keri_prefix_next) = &next_set;
 
-        let next_key_hash = nxt_commitment(
-            &SignatureThreshold::Simple(threshold),
-            &keri_prefix_next,
-            &SelfAddressing::Blake3_256,
-        );
-        let key_config = KeyConfig::new(
-            keri_prefix.to_vec(),
-            Some(next_key_hash),
-            Some(SignatureThreshold::Simple(threshold)),
-        );
-        Ok(InceptionData {
-            event_message: InceptionEvent::new(key_config, None, None)
-                .incept_self_addressing(SelfAddressing::Blake3_256, SerializationFormats::JSON)?,
-            key_set_and_prefix: first_set,
-            key_set_and_prefix_next: next_set,
-        })
-    }
-    #[inline]
-    fn sign_event(event: &EventMessage, signer: &dyn Signer) -> SolKeriResult<Signature> {
-        Ok(signer.sign_message(&event.serialize()?))
-    }
+    //     let next_key_hash = nxt_commitment(
+    //         &SignatureThreshold::Simple(threshold),
+    //         &keri_prefix_next,
+    //         &SelfAddressing::Blake3_256,
+    //     );
+    //     let key_config = KeyConfig::new(
+    //         keri_prefix.to_vec(),
+    //         Some(next_key_hash),
+    //         Some(SignatureThreshold::Simple(threshold)),
+    //     );
+    //     Ok(InceptionData {
+    //         event_message: InceptionEvent::new(key_config, None, None)
+    //             .incept_self_addressing(SelfAddressing::Blake3_256, SerializationFormats::JSON)?,
+    //         key_set_and_prefix: first_set,
+    //         key_set_and_prefix_next: next_set,
+    //     })
+    // }
+    // #[inline]
+    // fn sign_event(event: &EventMessage, signer: &dyn Signer) -> SolKeriResult<Signature> {
+    //     Ok(signer.sign_message(&event.serialize()?))
+    // }
+    // #[test]
+    // fn cdir() {
+    //     println!("Running dir {:?}", std::env::current_dir());
+    // }
 
-    #[test]
-    fn test_inception_pass() -> SolKeriResult<()> {
-        let inception_data = create_inception_event(2, 1)?;
-        // println!("{:?}\n\n", inception_data.event_message);
-        let sol_keyp = &inception_data.key_set_and_prefix.0[0];
-        let prefix = inception_data.event_message.event.prefix.clone();
-        let icp_signature = sign_event(&inception_data.event_message, sol_keyp)?;
-        let icp_serialized = inception_data.event_message.serialize()?;
-        println!("Sig = {:?}", icp_signature);
-        println!(
-            "Ver {}",
-            icp_signature.verify(&sol_keyp.pubkey().to_bytes(), &icp_serialized)
-        );
-        assert_eq!(prefix.to_str().len(), 44);
-        let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
-        let keri_vdr = "did:keri:local_db".to_string();
-        let mut keri_ref = BTreeMap::<String, String>::new();
-        keri_ref.insert("i".to_string(), sol_keri_did);
-        keri_ref.insert("ri".to_string(), keri_vdr);
-        println!("Tx doc {:?}", keri_ref);
-        println!("Msg = {:?}", bs58::encode(icp_serialized).into_string());
-        println!("Signature = {:?}", icp_signature);
-        println!("Public Key signer {:?}", sol_keyp.pubkey());
+    // #[test]
+    // fn test_inception_pass() -> SolKeriResult<()> {
+    //     let inception_data = create_inception_event(2, 1)?;
+    //     // println!("{:?}\n\n", inception_data.event_message);
+    //     let sol_keyp = &inception_data.key_set_and_prefix.0[0];
+    //     let prefix = inception_data.event_message.event.prefix.clone();
+    //     let icp_signature = sign_event(&inception_data.event_message, sol_keyp)?;
+    //     let icp_serialized = inception_data.event_message.serialize()?;
+    //     println!("Sig = {:?}", icp_signature);
+    //     println!(
+    //         "Ver {}",
+    //         icp_signature.verify(&sol_keyp.pubkey().to_bytes(), &icp_serialized)
+    //     );
+    //     assert_eq!(prefix.to_str().len(), 44);
+    //     let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
+    //     let keri_vdr = "did:keri:local_db".to_string();
+    //     let mut keri_ref = BTreeMap::<String, String>::new();
+    //     keri_ref.insert("i".to_string(), sol_keri_did);
+    //     keri_ref.insert("ri".to_string(), keri_vdr);
+    //     println!("Tx doc {:?}", keri_ref);
+    //     println!("Msg = {:?}", bs58::encode(icp_serialized).into_string());
+    //     println!("Signature = {:?}", icp_signature);
+    //     println!("Public Key signer {:?}", sol_keyp.pubkey());
 
-        Ok(())
-    }
+    //     Ok(())
+    // }
 
-    #[test]
-    fn test_program_inception_pass() -> SolKeriResult<()> {
-        print!("Generating inception/DID... ");
-        let inception_data = create_inception_event(2, 1)?;
-        let prefix = inception_data.event_message.event.prefix.clone();
-        assert_eq!(prefix.to_str().len(), 44);
-        println!("{:?}", prefix.to_str());
+    // #[test]
+    // fn test_program_inception_pass() -> SolKeriResult<()> {
+    //     print!("Generating inception/DID... ");
+    //     let inception_data = create_inception_event(2, 1)?;
+    //     let prefix = inception_data.event_message.event.prefix.clone();
+    //     assert_eq!(prefix.to_str().len(), 44);
+    //     println!("{:?}", prefix.to_str());
 
-        println!("Creating KERI reference doc");
-        let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
-        let keri_vdr = "did:keri:local_db".to_string();
-        let mut keri_ref = BTreeMap::<String, String>::new();
-        keri_ref.insert("i".to_string(), sol_keri_did);
-        keri_ref.insert("ri".to_string(), keri_vdr);
-        // Spawn test validator node
-        println!("Starting local validator node");
-        let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
-        // Setup the signature verification instruction usingthe serialized key event
-        let sol_keyp = &inception_data.key_set_and_prefix.0[0];
-        let tx_kp = Keypair::new();
-        keri_ref.insert("owner".to_string(), tx_kp.pubkey().to_string());
-        let privkey = ed25519_dalek::Keypair::from_bytes(&sol_keyp.to_bytes()).unwrap();
-        let ix = ed25519_instruction::new_ed25519_instruction(&privkey, &keri_ref.try_to_vec()?);
+    //     println!("Creating KERI reference doc");
+    //     let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
+    //     let keri_vdr = "did:keri:local_db".to_string();
+    //     let mut keri_ref = BTreeMap::<String, String>::new();
+    //     keri_ref.insert("i".to_string(), sol_keri_did);
+    //     keri_ref.insert("ri".to_string(), keri_vdr);
+    //     // Spawn test validator node
+    //     println!("Starting local validator node");
+    //     let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
+    //     // Setup the signature verification instruction usingthe serialized key event
+    //     let sol_keyp = &inception_data.key_set_and_prefix.0[0];
+    //     let tx_kp = Keypair::new();
+    //     keri_ref.insert("owner".to_string(), tx_kp.pubkey().to_string());
+    //     let privkey = ed25519_dalek::Keypair::from_bytes(&sol_keyp.to_bytes()).unwrap();
+    //     let ix = ed25519_instruction::new_ed25519_instruction(&privkey, &keri_ref.try_to_vec()?);
 
-        // Get the RpcClient
-        let connection = test_validator.get_rpc_client();
+    //     // Get the RpcClient
+    //     let connection = test_validator.get_rpc_client();
 
-        // Capture our programs log statements
-        // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
-        // solana_logger::setup_with_default("solana_runtime::message=debug");
+    //     // Capture our programs log statements
+    //     // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
+    //     // solana_logger::setup_with_default("solana_runtime::message=debug");
 
-        println!("Submitting Solana-Keri Inception Instruction");
+    //     println!("Submitting Solana-Keri Inception Instruction");
 
-        let accounts = &[
-            AccountMeta::new_readonly(tx_kp.pubkey(), true),
-            AccountMeta::new_readonly(payer.pubkey(), true),
-        ];
-        // let accounts = &[AccountMeta::new_readonly(payer.pubkey(), true)];
-        // Build instruction array and submit transaction
-        let txn = submit_transaction(
-            &connection,
-            &tx_kp, //payer,
-            &payer,
-            [
-                ix,
-                Instruction::new_with_borsh(
-                    program_pk,
-                    &SDMInstruction::InceptionEvent(keri_ref),
-                    accounts.to_vec(),
-                ),
-            ]
-            .to_vec(),
-        );
-        assert!(txn.is_ok());
-        let signature = txn.unwrap();
-        println!("Success... tx signature = {:?}", signature);
-        println!("Delay 20s for block completion. Should use websocket monitoring");
-        sleep(Duration::from_secs(20));
-        println!("Fetching transaction for signature {:?}", signature);
-        println!(
-            "{:?}",
-            instruction_from_transaction(&connection, &signature)
-        );
-        Ok(())
-    }
-
-    #[test]
-    fn slicing() {
-        let accounts = vec![Pubkey::new_unique()];
-        for pk in &accounts[1..] {
-            println!("{:?}", pk)
-        }
-    }
+    //     let accounts = &[
+    //         AccountMeta::new_readonly(tx_kp.pubkey(), true),
+    //         AccountMeta::new_readonly(payer.pubkey(), true),
+    //     ];
+    //     // let accounts = &[AccountMeta::new_readonly(payer.pubkey(), true)];
+    //     // Build instruction array and submit transaction
+    //     let txn = submit_transaction(
+    //         &connection,
+    //         &tx_kp, //payer,
+    //         &payer,
+    //         [
+    //             ix,
+    //             Instruction::new_with_borsh(
+    //                 program_pk,
+    //                 &SDMInstruction::InceptionEvent(keri_ref),
+    //                 accounts.to_vec(),
+    //             ),
+    //         ]
+    //         .to_vec(),
+    //     );
+    //     assert!(txn.is_ok());
+    //     let signature = txn.unwrap();
+    //     println!("Success... tx signature = {:?}", signature);
+    //     println!("Delay 20s for block completion. Should use websocket monitoring");
+    //     sleep(Duration::from_secs(20));
+    //     println!("Fetching transaction for signature {:?}", signature);
+    //     println!(
+    //         "{:?}",
+    //         instruction_from_transaction(&connection, &signature)
+    //     );
+    //     Ok(())
+    // }
 }

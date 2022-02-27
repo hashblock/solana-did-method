@@ -1,11 +1,8 @@
 //! @brief Program entry point
 
-// References program error and core processor
-use crate::{error::SDMProgramError, process::process};
 // Solana standard program crates
 use solana_program::{
-    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult,
-    program_error::PrintProgramError, pubkey::Pubkey,
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, pubkey::Pubkey,
 };
 
 // Set by cargo-solana
@@ -19,19 +16,17 @@ pub fn entry_point(
     instruction_data: &[u8],
 ) -> ProgramResult {
     // Normal processing
-    if let Err(error) = process(program_id, accounts, instruction_data) {
-        // catch the error so we can print it
-        error.print::<SDMProgramError>();
-        return Err(error);
-    }
-
-    Ok(())
+    Ok(crate::process::process(program_id, accounts, instruction_data).unwrap())
 }
 
 #[cfg(test)]
 mod test {
 
-    use crate::{id, instruction::SDMInstruction};
+    use crate::{
+        id,
+        instruction::{InceptionDID, SDMInstruction},
+        state::{SDMDid, SDMDidState},
+    };
 
     use super::*;
     use assert_matches::*;
@@ -39,7 +34,7 @@ mod test {
     use solana_program::{
         hash::Hash,
         instruction::{AccountMeta, Instruction},
-        pubkey::Pubkey,
+        pubkey::{Pubkey, PUBKEY_BYTES},
     };
     use solana_program_test::{
         processor,
@@ -49,21 +44,22 @@ mod test {
     use solana_sdk::{
         account::Account, signature::Keypair, signer::Signer, transaction::Transaction,
     };
-    use std::collections::BTreeMap;
+    use std::str::FromStr;
 
     /// Sets up the Program test and initializes 'n' program_accounts
     async fn setup(
         program_id: &Pubkey,
         program_accounts: &[Pubkey],
+        account_sizes: &[usize],
     ) -> (BanksClient, Keypair, Hash) {
         let mut program_test = ProgramTest::new(NAME, *program_id, processor!(entry_point));
         // Add accounts for testing
-        for account in program_accounts {
+        for i in 0..program_accounts.len() {
             program_test.add_account(
-                *account,
+                program_accounts[i],
                 Account {
                     lamports: 5,
-                    data: vec![0_u8; 3],
+                    data: vec![0_u8; account_sizes[i]],
                     owner: *program_id,
                     ..Account::default()
                 },
@@ -71,34 +67,59 @@ mod test {
         }
         program_test.start().await
     }
-
     #[tokio::test]
-    async fn test_inception_pass() {
-        // let program_id = Pubkey::new_unique();
+    async fn test_serialization() {
+        let dummm_faux_pda = Pubkey::new_unique();
+        let dummy_pk = Pubkey::from_str("SDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();
+        let dummy_pk1 = Pubkey::from_str("FDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();
+        let dummy_pk2 = Pubkey::from_str("HDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();
+
+        let mut keys = Vec::<Pubkey>::new();
+        for i in 0..2 {
+            if i == 0 {
+                keys.push(dummy_pk1)
+            } else {
+                keys.push(dummy_pk2)
+            }
+        }
+        let faux_account = InceptionDID {
+            prefix: dummy_pk,
+            keys,
+        };
+        let data_size = 0usize
+            .saturating_add(std::mem::size_of::<bool>()) // Initialized
+            .saturating_add(std::mem::size_of::<u16>()) // Version
+            .saturating_add(std::mem::size_of::<SDMDidState>()) // State
+            .saturating_add(PUBKEY_BYTES) // Prefix pubkey
+            .saturating_add(std::mem::size_of::<u32>())
+            .saturating_add(PUBKEY_BYTES * faux_account.keys.len());
+        // let saccount = faux_account.try_to_vec().unwrap();
         let program_id = id();
-        let signer = Keypair::new();
         // Standup runtime testing
-        let (mut banks_client, payer, recent_blockhash) = setup(&program_id, &[]).await;
-
-        let sol_keri_did = ["did", "sol", "keri", &payer.pubkey().to_string()].join(":");
-        let mut keri_ref = BTreeMap::<String, String>::new();
-        keri_ref.insert("i".to_string(), sol_keri_did);
-        keri_ref.insert("ri".to_string(), "did:keri:local_db".to_string());
-        keri_ref.insert("owner".to_string(), payer.pubkey().to_string());
-
+        let (mut banks_client, payer, recent_blockhash) =
+            setup(&program_id, &[dummm_faux_pda], &[data_size]).await;
         let macc = vec![
-            AccountMeta::new_readonly(payer.pubkey(), false),
-            AccountMeta::new_readonly(signer.pubkey(), false),
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(dummm_faux_pda, false),
         ];
         // Build the transaction and verify execution
         let ix = [Instruction::new_with_borsh(
             program_id,
-            &SDMInstruction::InceptionEvent(keri_ref),
+            &SDMInstruction::SDMInception(faux_account),
             macc,
         )];
         let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
         transaction.sign(&[&payer], recent_blockhash);
-        let result = banks_client.process_transaction(transaction).await;
+        let result = banks_client
+            .process_transaction_with_preflight(transaction)
+            .await;
+
         assert_matches!(result, Ok(()));
+
+        let account_res = banks_client
+            .get_account_data_with_borsh::<SDMDid>(dummm_faux_pda)
+            .await;
+        assert!(account_res.is_ok());
+        println!("{:?}", account_res.unwrap());
     }
 }

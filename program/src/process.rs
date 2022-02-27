@@ -1,11 +1,15 @@
 //! Program core processing module
 
-use std::{collections::BTreeMap, str::FromStr};
-
-use crate::{error::SDMProgramError, instruction::SDMInstruction};
+use crate::{
+    instruction::{InceptionDID, SDMInstruction},
+    state::SDMDid,
+};
 
 use solana_program::{
-    account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
+    account_info::{next_account_info, AccountInfo},
+    entrypoint::ProgramResult,
+    msg,
+    program_error::ProgramError,
     pubkey::Pubkey,
 };
 
@@ -15,39 +19,26 @@ use solana_program::{
 /// Change this to suite your account logic
 fn check_account_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
     // First account is wallet so, any subsequent in this example must be owned by the program.
-    for account in &accounts[2..] {
+    for account in &accounts[1..] {
         if account.owner != program_id {
-            msg!(
-                "Fail: Account owner is {} and it should be {}.",
-                account.owner,
-                program_id
-            );
             return Err(ProgramError::IncorrectProgramId);
         }
     }
+    msg!("Accounts validated");
     Ok(())
 }
 
-fn verify_inception(signer: &AccountInfo, did_ref: BTreeMap<String, String>) -> ProgramResult {
-    msg!("Processing DID:SOL:KERI Inception");
-    if did_ref.keys().len() != 3 {
-        Err(SDMProgramError::InvalidDidReference.into())
-    } else if !did_ref.contains_key(&"i".to_string()) {
-        Err(SDMProgramError::InvalidDidReference.into())
-    } else if !did_ref.contains_key(&"ri".to_string()) {
-        Err(SDMProgramError::InvalidDidReference.into())
-    } else if !did_ref.contains_key(&"owner".to_string()) {
-        Err(SDMProgramError::InvalidDidReference.into())
-    } else {
-        if signer
-            .key
-            .eq(&Pubkey::from_str(did_ref.get(&"owner".to_string()).unwrap()).unwrap())
-        {
-            Ok(())
-        } else {
-            Err(SDMProgramError::OwnerNotSignerError.into())
-        }
-    }
+fn sdm_inception(accounts: &[AccountInfo], did: InceptionDID) -> ProgramResult {
+    let account_iter = &mut accounts.iter();
+    // Skip signer
+    next_account_info(account_iter)?;
+    let pda = next_account_info(account_iter)?;
+    msg!("Inception for {:?}", pda.key);
+    let mut my_data = pda.try_borrow_mut_data()?;
+    let mut did_doc = SDMDid::unpack_unitialized(&my_data, did)?;
+    did_doc.set_initialized();
+    did_doc.pack(*my_data)?;
+    Ok(())
 }
 
 /// Main processing entry point dispatches to specific
@@ -64,6 +55,6 @@ pub fn process(
 
     // Unpack the inbound data, mapping instruction to appropriate function
     match SDMInstruction::unpack(instruction_data)? {
-        SDMInstruction::InceptionEvent(did_ref) => verify_inception(&accounts[0], did_ref),
+        SDMInstruction::SDMInception(d) => sdm_inception(accounts, d),
     }
 }
