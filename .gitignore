@@ -2,4 +2,4 @@ target
 Cargo.lock
 .DB_Store
 .ledger/
-/cli/keys/wallet/*
+wallet/
