@@ -6,7 +6,7 @@ use solana_did_method::instruction::SDMInstruction;
 use solana_sdk::signature::Signature;
 use solana_transaction_status::UiTransactionEncoding;
 
-use crate::{errors::SolKeriCliError, SolKeriResult};
+use crate::{errors::SolKeriCliError, errors::SolKeriResult};
 
 /// Fetches and decodes a transactions instruction data
 pub fn instruction_from_transaction(
