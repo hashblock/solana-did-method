@@ -2,7 +2,7 @@
 
 use std::{collections::BTreeMap, str::FromStr};
 
-use crate::{error::CustomProgramError, instruction::SolKeriInstruction};
+use crate::{error::SDMProgramError, instruction::SDMInstruction};
 
 use solana_program::{
     account_info::AccountInfo, entrypoint::ProgramResult, msg, program_error::ProgramError,
@@ -31,13 +31,13 @@ fn check_account_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
 fn verify_inception(signer: &AccountInfo, did_ref: BTreeMap<String, String>) -> ProgramResult {
     msg!("Processing DID:SOL:KERI Inception");
     if did_ref.keys().len() != 3 {
-        Err(CustomProgramError::InvalidDidReference.into())
+        Err(SDMProgramError::InvalidDidReference.into())
     } else if !did_ref.contains_key(&"i".to_string()) {
-        Err(CustomProgramError::InvalidDidReference.into())
+        Err(SDMProgramError::InvalidDidReference.into())
     } else if !did_ref.contains_key(&"ri".to_string()) {
-        Err(CustomProgramError::InvalidDidReference.into())
+        Err(SDMProgramError::InvalidDidReference.into())
     } else if !did_ref.contains_key(&"owner".to_string()) {
-        Err(CustomProgramError::InvalidDidReference.into())
+        Err(SDMProgramError::InvalidDidReference.into())
     } else {
         if signer
             .key
@@ -45,7 +45,7 @@ fn verify_inception(signer: &AccountInfo, did_ref: BTreeMap<String, String>) -> 
         {
             Ok(())
         } else {
-            Err(CustomProgramError::OwnerNotSignerError.into())
+            Err(SDMProgramError::OwnerNotSignerError.into())
         }
     }
 }
@@ -63,7 +63,7 @@ pub fn process(
     }
 
     // Unpack the inbound data, mapping instruction to appropriate function
-    match SolKeriInstruction::unpack(instruction_data)? {
-        SolKeriInstruction::InceptionEvent(did_ref) => verify_inception(&accounts[0], did_ref),
+    match SDMInstruction::unpack(instruction_data)? {
+        SDMInstruction::InceptionEvent(did_ref) => verify_inception(&accounts[0], did_ref),
     }
 }

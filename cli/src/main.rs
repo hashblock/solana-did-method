@@ -26,7 +26,7 @@ mod tests {
         prefix::{BasicPrefix, Prefix},
     };
     use solana_client::rpc_client::RpcClient;
-    use solana_did_method::instruction::SolKeriInstruction;
+    use solana_did_method::{id, instruction::SDMInstruction};
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::{
         ed25519_instruction,
@@ -44,13 +44,11 @@ mod tests {
     const LEDGER_PATH: &str = "./.ledger";
     /// Path to BPF program (*.so)
     const PROG_PATH: &str = "../target/deploy/";
-    /// Program name from program Cargo.toml
-    /// FILL IN WITH YOUR PROGRAM
+    /// Program name from program/Cargo.toml
     const PROG_NAME: &str = "solana_did_method";
 
     /// Setup the test validator with predefined properties
     pub fn setup_validator() -> SolKeriResult<(TestValidator, Keypair, Pubkey)> {
-        let program_id = Pubkey::new_unique();
         // Extend environment variable to include our program location
         std::env::set_var("BPF_OUT_DIR", PROG_PATH);
         // Instantiate the test validator
@@ -63,7 +61,7 @@ mod tests {
             .ledger_path(LEDGER_PATH)
             // Load our program. Ignored if reusing ledger
             // maps to `solana-test-validator --bpf-program <ADDRESS_OR_PATH BPF_PROGRAM.SO>`
-            .add_program(PROG_NAME, program_id)
+            .add_program(PROG_NAME, id())
             // Start the test validator
             .rpc_config(JsonRpcConfig {
                 enable_rpc_transaction_history: true,
@@ -72,7 +70,7 @@ mod tests {
                 ..JsonRpcConfig::default_for_test()
             })
             .start();
-        Ok((test_validator, kp, program_id))
+        Ok((test_validator, kp, id()))
     }
 
     /// Convenience function to remove existing ledger before TestValidatorGenesis setup
@@ -226,7 +224,7 @@ mod tests {
                 ix,
                 Instruction::new_with_borsh(
                     program_pk,
-                    &SolKeriInstruction::InceptionEvent(keri_ref),
+                    &SDMInstruction::InceptionEvent(keri_ref),
                     accounts.to_vec(),
                 ),
             ]

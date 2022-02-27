@@ -1,15 +1,16 @@
 //! @brief Program entry point
 
 // References program error and core processor
-use crate::{error::CustomProgramError, process::process};
+use crate::{error::SDMProgramError, process::process};
 // Solana standard program crates
 use solana_program::{
-    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult, msg,
+    account_info::AccountInfo, entrypoint, entrypoint::ProgramResult,
     program_error::PrintProgramError, pubkey::Pubkey,
 };
 
 // Set by cargo-solana
-const NAME: &str = "solana_keri";
+#[allow(dead_code)]
+const NAME: &str = "solana_did_method";
 
 entrypoint!(entry_point);
 pub fn entry_point(
@@ -17,11 +18,10 @@ pub fn entry_point(
     accounts: &[AccountInfo],
     instruction_data: &[u8],
 ) -> ProgramResult {
-    msg!("Entry point {} with signer {:?}", NAME, accounts[0].key);
     // Normal processing
     if let Err(error) = process(program_id, accounts, instruction_data) {
         // catch the error so we can print it
-        error.print::<CustomProgramError>();
+        error.print::<SDMProgramError>();
         return Err(error);
     }
 
@@ -31,7 +31,7 @@ pub fn entry_point(
 #[cfg(test)]
 mod test {
 
-    use crate::instruction::SolKeriInstruction;
+    use crate::{id, instruction::SDMInstruction};
 
     use super::*;
     use assert_matches::*;
@@ -74,8 +74,9 @@ mod test {
 
     #[tokio::test]
     async fn test_inception_pass() {
-        let program_id = Pubkey::new_unique();
-
+        // let program_id = Pubkey::new_unique();
+        let program_id = id();
+        let signer = Keypair::new();
         // Standup runtime testing
         let (mut banks_client, payer, recent_blockhash) = setup(&program_id, &[]).await;
 
@@ -85,11 +86,14 @@ mod test {
         keri_ref.insert("ri".to_string(), "did:keri:local_db".to_string());
         keri_ref.insert("owner".to_string(), payer.pubkey().to_string());
 
-        let macc = vec![AccountMeta::new(payer.pubkey(), false)];
+        let macc = vec![
+            AccountMeta::new_readonly(payer.pubkey(), false),
+            AccountMeta::new_readonly(signer.pubkey(), false),
+        ];
         // Build the transaction and verify execution
         let ix = [Instruction::new_with_borsh(
             program_id,
-            &SolKeriInstruction::InceptionEvent(keri_ref),
+            &SDMInstruction::InceptionEvent(keri_ref),
             macc,
         )];
         let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));

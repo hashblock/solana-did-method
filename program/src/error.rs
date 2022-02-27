@@ -9,7 +9,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error, FromPrimitive)]
 #[error("...")]
-pub enum CustomProgramError {
+pub enum SDMProgramError {
     #[error("Invalid DID Reference")]
     InvalidDidReference,
     #[error("Owner is not signer for DID")]
@@ -19,30 +19,30 @@ pub enum CustomProgramError {
 
 /// Enables 'into()` on custom error to convert
 /// to ProgramError
-impl From<CustomProgramError> for ProgramError {
-    fn from(e: CustomProgramError) -> Self {
+impl From<SDMProgramError> for ProgramError {
+    fn from(e: SDMProgramError) -> Self {
         ProgramError::Custom(e as u32)
     }
 }
 
 /// Supports error.print
-impl<T> DecodeError<T> for CustomProgramError {
+impl<T> DecodeError<T> for SDMProgramError {
     fn type_of() -> &'static str {
         "CustomProgramError"
     }
 }
 
 /// Supports error.print
-impl PrintProgramError for CustomProgramError {
+impl PrintProgramError for SDMProgramError {
     fn print<E>(&self)
     where
         E: 'static + std::error::Error + DecodeError<E> + PrintProgramError + FromPrimitive,
     {
         match self {
-            CustomProgramError::InvalidDidReference => {
+            SDMProgramError::InvalidDidReference => {
                 println!("Not a valid DID reference")
             }
-            CustomProgramError::OwnerNotSignerError => {
+            SDMProgramError::OwnerNotSignerError => {
                 println!("Owner not equal to signer")
             }
         }

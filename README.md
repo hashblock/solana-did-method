@@ -30,19 +30,19 @@ Finally, install the latest [Solana CLI Suite](https://docs.solana.com/cli/insta
 
 Using https
 ```bash
-$ git clone https://github.com/hashblock/solana-keri
+$ git clone https://github.com/hashblock/solana-did-method
 ```
 
 Using ssh
 ```bash
-$ git clone git@github.com:hashblock/solana-keri.git
+$ git clone git@github.com:hashblock/solana-did-method.git
 ```
 
 ## **3. Build.**
 
 First the Solana program
 ```bash
-$ cd solana-keri/program
+$ cd solana-did-method/program
 $ cargo build-bpf
 $ cd ..
 ```
