@@ -3,7 +3,7 @@
 use std::io::BufWriter;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::{msg, pubkey::Pubkey};
+use solana_program::pubkey::Pubkey;
 
 pub use crate::error::SDMProgramError;
 use crate::instruction::InceptionDID;
@@ -73,7 +73,6 @@ impl SDMDid {
             version[1] = data[2];
             let version = u16::from_le_bytes(version);
             if version == CURRENT_DATA_VERSION {
-                msg!("Unpacking DID Doc data ");
                 let current = SDMDid::try_from_slice(data).unwrap();
                 Ok(current)
             } else {

@@ -24,8 +24,6 @@ pub enum SDMInstruction {
     /// 0. InceptionDID
     ///
     SDMInception(InceptionDID),
-    /// Used for testing
-    SDMInvalidVersionTest,
 }
 
 impl SDMInstruction {
@@ -35,8 +33,6 @@ impl SDMInstruction {
         let payload = try_from_slice_unchecked::<SDMInstruction>(input).unwrap();
         match payload {
             SDMInstruction::SDMInception(_) => Ok(payload),
-            // For testing only
-            SDMInstruction::SDMInvalidVersionTest => Ok(payload),
         }
     }
 }
