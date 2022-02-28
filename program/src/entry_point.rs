@@ -81,7 +81,7 @@ mod test {
             .saturating_add(PUBKEY_BYTES * my_did.keys.len())
     }
     #[tokio::test]
-    async fn test_inception_pass() {
+    async fn test_inception_progaccount_pass() {
         let dummm_faux_pda = Pubkey::new_unique();
         // Fake prefix from KERI
         let dummy_pk = Pubkey::from_str("SDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();
@@ -128,6 +128,70 @@ mod test {
 
         let account_res = banks_client
             .get_account_data_with_borsh::<SDMDid>(dummm_faux_pda)
+            .await;
+        assert!(account_res.is_ok());
+        println!("{:?}", account_res.unwrap());
+    }
+    #[tokio::test]
+    async fn test_inception_pda_pass() {
+        // Get program
+        let program_id = id();
+        let faux_prefix = Pubkey::new_unique();
+        println!("Faux Prefix {faux_prefix:?}");
+        let (dummm_faux_pda, bump) =
+            Pubkey::find_program_address(&[&faux_prefix.to_bytes()], &program_id);
+        println!("Find_pk {:?} bump {}", dummm_faux_pda, bump);
+        let faux_pda = Pubkey::create_program_address(
+            &[b"did:solana:", &[bump], &faux_prefix.to_bytes()],
+            &program_id,
+        )
+        .unwrap();
+        // let faux_pda = Pubkey::create_with_seed(&faux_prefix, "did:solana:", &program_id).unwrap();
+        println!("Faux_pk {:?}", faux_pda);
+        // let dummm_faux_pda = Pubkey::new_unique();
+        // Fake prefix from KERI
+        let dummy_pk = Pubkey::from_str("SDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();
+        // Accounts being managed
+        let dummy_pk1 = Pubkey::from_str("FDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();
+        let dummy_pk2 = Pubkey::from_str("HDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();
+
+        let mut keys = Vec::<Pubkey>::new();
+        for i in 0..2 {
+            if i == 0 {
+                keys.push(dummy_pk1)
+            } else {
+                keys.push(dummy_pk2)
+            }
+        }
+        // Setup instruction payload
+        let faux_account = InceptionDID {
+            prefix: dummy_pk,
+            keys,
+        };
+        let data_size = get_datasize(&faux_account);
+        // Standup runtime testing
+        let (mut banks_client, payer, recent_blockhash) =
+            setup(&program_id, &[faux_pda], &[data_size]).await;
+        let macc = vec![
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(faux_pda, false),
+        ];
+        // Build the transaction and verify execution
+        let ix = [Instruction::new_with_borsh(
+            program_id,
+            &SDMInstruction::SDMInception(faux_account),
+            macc,
+        )];
+        let mut transaction = Transaction::new_with_payer(&ix, Some(&payer.pubkey()));
+        transaction.sign(&[&payer], recent_blockhash);
+        let result = banks_client
+            .process_transaction_with_preflight(transaction)
+            .await;
+
+        assert_matches!(result, Ok(()));
+
+        let account_res = banks_client
+            .get_account_data_with_borsh::<SDMDid>(faux_pda)
             .await;
         assert!(account_res.is_ok());
         println!("{:?}", account_res.unwrap());
