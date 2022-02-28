@@ -22,14 +22,14 @@ pub enum SDMDidState {
 pub struct SDMDidDocCurrent {
     state: SDMDidState,
     prefix: Pubkey,
-    keys: Vec<Pubkey>,
+    pub keys: Vec<Pubkey>,
 }
 
 #[derive(BorshSerialize, BorshDeserialize, Debug)]
 #[allow(dead_code)]
 pub struct SDMDid {
     initialized: bool,
-    version: u16,
+    pub version: u16,
     pub did_doc: SDMDidDocCurrent,
 }
 
@@ -38,16 +38,19 @@ impl SDMDid {
     pub fn set_initialized(&mut self) {
         self.initialized = true
     }
+    /// Sets the initialization flag
+    pub fn flip_version(&mut self) {
+        self.version = 20
+    }
     /// Assumes the account has not been initialized yet
     /// If so, returns default state or otherwise throws error
     pub fn unpack_unitialized(data: &[u8], with: InceptionDID) -> Result<Self, SDMProgramError> {
-        msg!("Client size = {}", data.len());
         let is_initialized = data[0] != 0;
         if is_initialized {
             Err(SDMProgramError::DidAlreadyInitialized)
         } else {
             Ok(Self {
-                initialized: is_initialized,
+                initialized: !is_initialized,
                 version: CURRENT_DATA_VERSION,
                 did_doc: SDMDidDocCurrent {
                     state: SDMDidState::Inception,
@@ -65,24 +68,23 @@ impl SDMDid {
         if !is_initialized {
             Err(SDMProgramError::DidNotInitialized)
         } else {
-            Ok(Self {
-                initialized: is_initialized,
-                did_doc: SDMDidDocCurrent {
-                    state: SDMDidState::Inception,
-                    prefix: Pubkey::new_unique(),
-                    keys: Vec::<Pubkey>::new(),
-                },
-                version: CURRENT_DATA_VERSION,
-            })
+            let mut version: [u8; 2] = [0, 0];
+            version[0] = data[1];
+            version[1] = data[2];
+            let version = u16::from_le_bytes(version);
+            if version == CURRENT_DATA_VERSION {
+                msg!("Unpacking DID Doc data ");
+                let current = SDMDid::try_from_slice(data).unwrap();
+                Ok(current)
+            } else {
+                Err(SDMProgramError::DidDataVersionInvalid)
+            }
         }
     }
 
     /// Serializes the current data to the account state
     pub fn pack(&mut self, data: &mut [u8]) -> Result<(), SDMProgramError> {
-        msg!("Packing data of size {}", data.len());
-        // data[0] = self.initialized as u8;
         let mut bw = BufWriter::new(data);
-        msg!("Data serialized size {}", self.try_to_vec().unwrap().len());
         self.serialize(&mut bw).unwrap();
         Ok(())
     }

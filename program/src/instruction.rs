@@ -6,7 +6,7 @@ use solana_program::{
     borsh::try_from_slice_unchecked, program_error::ProgramError, pubkey::Pubkey,
 };
 
-#[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
 pub struct InceptionDID {
     pub prefix: Pubkey,
     pub keys: Vec<Pubkey>,
@@ -24,6 +24,8 @@ pub enum SDMInstruction {
     /// 0. InceptionDID
     ///
     SDMInception(InceptionDID),
+    /// Used for testing
+    SDMInvalidVersionTest,
 }
 
 impl SDMInstruction {
@@ -33,6 +35,8 @@ impl SDMInstruction {
         let payload = try_from_slice_unchecked::<SDMInstruction>(input).unwrap();
         match payload {
             SDMInstruction::SDMInception(_) => Ok(payload),
+            // For testing only
+            SDMInstruction::SDMInvalidVersionTest => Ok(payload),
         }
     }
 }

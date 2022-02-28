@@ -4466,8 +4466,7 @@ version = "0.2.0"
 dependencies = [
  "assert_matches",
  "borsh",
- "num-derive",
- "num-traits",
+ "num_enum",
  "solana-program",
  "solana-program-test",
  "solana-sdk",
