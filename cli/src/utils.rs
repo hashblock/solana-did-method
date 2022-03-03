@@ -2,11 +2,14 @@
 
 use borsh::BorshDeserialize;
 use solana_client::rpc_client::RpcClient;
-use solana_did_method::instruction::SDMInstruction;
-use solana_sdk::signature::Signature;
+use solana_did_method::{
+    instruction::{InceptionDID, SDMInstruction},
+    state::SDMDidState,
+};
+use solana_sdk::{pubkey::PUBKEY_BYTES, signature::Signature};
 use solana_transaction_status::UiTransactionEncoding;
 
-use crate::{errors::SolKeriCliError, errors::SolKeriResult};
+use crate::{errors::SolKeriError, errors::SolKeriResult};
 
 /// Fetches and decodes a transactions instruction data
 pub fn instruction_from_transaction(
@@ -25,9 +28,22 @@ pub fn instruction_from_transaction(
                     &tx.message.instructions[1].data,
                 )?)
             }
-            None => Err(SolKeriCliError::DecodeTransactionError),
+            None => Err(SolKeriError::DecodeTransactionError),
         }
     } else {
-        Err(SolKeriCliError::GetTransactionError)
+        Err(SolKeriError::GetTransactionError)
     }
+}
+
+/// Calculate the size of the DID account state data size
+/// based on number of keys being managed
+pub fn get_inception_datasize(my_did: &InceptionDID) -> usize {
+    0usize
+        .saturating_add(std::mem::size_of::<bool>()) // Initialized
+        .saturating_add(std::mem::size_of::<u16>()) // Version
+        .saturating_add(std::mem::size_of::<SDMDidState>()) // State
+        .saturating_add(PUBKEY_BYTES) // Prefix pubkey
+        .saturating_add(std::mem::size_of::<u8>()) // bump
+        .saturating_add(std::mem::size_of::<u32>())
+        .saturating_add(PUBKEY_BYTES * my_did.keys.len())
 }

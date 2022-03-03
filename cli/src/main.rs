@@ -1,6 +1,7 @@
 //! cli for managing sol::keri dids and keys
 mod clparse;
 mod errors;
+mod incp_event;
 mod utils;
 pub use errors::SolKeriResult;
 use std::env;

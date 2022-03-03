@@ -21,7 +21,8 @@ pub enum SDMDidState {
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
 pub struct SDMDidDocCurrent {
     state: SDMDidState,
-    prefix: Pubkey,
+    prefix: [u8; 32],
+    bump: u8,
     pub keys: Vec<Pubkey>,
 }
 
@@ -55,6 +56,7 @@ impl SDMDid {
                 did_doc: SDMDidDocCurrent {
                     state: SDMDidState::Inception,
                     prefix: with.prefix,
+                    bump: with.bump,
                     keys: with.keys,
                 },
             })

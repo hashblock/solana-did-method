@@ -1,20 +1,17 @@
 #[cfg(test)]
 mod tests {
 
-    use borsh::BorshSerialize;
-    use cli::{errors::SolKeriResult, utils::instruction_from_transaction};
-    use keri::{
-        derivation::{basic::Basic, self_addressing::SelfAddressing},
-        event::{
-            event_data::InceptionEvent,
-            sections::{key_config::nxt_commitment, threshold::SignatureThreshold, KeyConfig},
-            EventMessage, SerializationFormats,
-        },
-        keys::PublicKey,
-        prefix::{BasicPrefix, Prefix},
+    use cli::{
+        errors::SolKeriResult,
+        incp_event::{generate_inception_event, SolDidEvent},
+        utils::{get_inception_datasize, instruction_from_transaction},
     };
+
     use solana_client::rpc_client::RpcClient;
-    use solana_did_method::{id, instruction::SDMInstruction};
+    use solana_did_method::{
+        id,
+        instruction::{InceptionDID, InitializeDidAccount, SDMInstruction},
+    };
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::{
         ed25519_instruction,
@@ -26,7 +23,7 @@ mod tests {
         transaction::Transaction,
     };
     use solana_test_validator::{TestValidator, TestValidatorGenesis};
-    use std::{collections::BTreeMap, path::PathBuf, str::FromStr, thread::sleep, time::Duration};
+    use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
 
     /// Location/Name of ProgramTestGenesis ledger
     const LEDGER_PATH: &str = "./.ledger";
@@ -54,7 +51,6 @@ mod tests {
             .rpc_config(JsonRpcConfig {
                 enable_rpc_transaction_history: true,
                 enable_cpi_and_log_storage: true,
-                // faucet_addr,
                 ..JsonRpcConfig::default_for_test()
             })
             .start();
@@ -70,168 +66,139 @@ mod tests {
         setup_validator()
     }
 
-    // /// Generic function that produces Solana Keypairs and derived KERI BasicPrefixs
-    // fn get_keys_and_prefix(key_count: usize) -> (Vec<Keypair>, Vec<BasicPrefix>) {
-    //     let mut sol_keys = Vec::<Keypair>::new();
-    //     let mut keri_keys = Vec::<BasicPrefix>::new();
+    /// Submits a transaction with programs instruction
+    fn submit_transaction(
+        rpc_client: &RpcClient,
+        wallet_signer: &dyn Signer,
+        wallet_payer: &dyn Signer,
+        instructions: Vec<Instruction>,
+    ) -> SolKeriResult<Signature> {
+        let mut transaction =
+            Transaction::new_unsigned(Message::new(&instructions, Some(&wallet_payer.pubkey())));
+        let recent_blockhash = rpc_client.get_latest_blockhash().unwrap();
+        transaction
+            .try_sign(&vec![wallet_signer], recent_blockhash)
+            .unwrap();
+        Ok(rpc_client
+            .send_and_confirm_transaction(&transaction)
+            .unwrap())
+    }
 
-    //     for _ in 0..key_count {
-    //         let sol_key = Keypair::new();
-    //         let keri_bp = BasicPrefix::new(
-    //             Basic::Ed25519,
-    //             PublicKey::new(sol_key.pubkey().to_bytes().to_vec()),
-    //         );
-    //         sol_keys.push(sol_key);
-    //         keri_keys.push(keri_bp);
-    //     }
-    //     (sol_keys, keri_keys)
-    // }
-
-    // /// Submits a transaction with programs instruction
-    // fn submit_transaction(
-    //     rpc_client: &RpcClient,
-    //     wallet_signer: &dyn Signer,
-    //     wallet_payer: &dyn Signer,
-    //     instructions: Vec<Instruction>,
-    // ) -> SolKeriResult<Signature> {
-    //     let mut transaction =
-    //         Transaction::new_unsigned(Message::new(&instructions, Some(&wallet_payer.pubkey())));
-    //     let recent_blockhash = rpc_client.get_latest_blockhash().unwrap();
-    //     transaction
-    //         .try_sign(&vec![wallet_signer, wallet_payer], recent_blockhash)
-    //         .unwrap();
-    //     Ok(rpc_client
-    //         .send_and_confirm_transaction(&transaction)
-    //         .unwrap())
-    // }
-    // pub struct InceptionData {
-    //     pub event_message: EventMessage,
-    //     pub key_set_and_prefix: (Vec<Keypair>, Vec<BasicPrefix>),
-    //     pub key_set_and_prefix_next: (Vec<Keypair>, Vec<BasicPrefix>),
-    // }
-
-    // fn create_inception_event(key_count: usize, threshold: u64) -> SolKeriResult<InceptionData> {
-    //     let first_set = get_keys_and_prefix(key_count);
-    //     let next_set = get_keys_and_prefix(key_count);
-    //     let (_, keri_prefix) = &first_set;
-    //     let (_, keri_prefix_next) = &next_set;
-
-    //     let next_key_hash = nxt_commitment(
-    //         &SignatureThreshold::Simple(threshold),
-    //         &keri_prefix_next,
-    //         &SelfAddressing::Blake3_256,
-    //     );
-    //     let key_config = KeyConfig::new(
-    //         keri_prefix.to_vec(),
-    //         Some(next_key_hash),
-    //         Some(SignatureThreshold::Simple(threshold)),
-    //     );
-    //     Ok(InceptionData {
-    //         event_message: InceptionEvent::new(key_config, None, None)
-    //             .incept_self_addressing(SelfAddressing::Blake3_256, SerializationFormats::JSON)?,
-    //         key_set_and_prefix: first_set,
-    //         key_set_and_prefix_next: next_set,
-    //     })
-    // }
     // #[inline]
     // fn sign_event(event: &EventMessage, signer: &dyn Signer) -> SolKeriResult<Signature> {
     //     Ok(signer.sign_message(&event.serialize()?))
     // }
-    // #[test]
-    // fn cdir() {
-    //     println!("Running dir {:?}", std::env::current_dir());
-    // }
 
-    // #[test]
-    // fn test_inception_pass() -> SolKeriResult<()> {
-    //     let inception_data = create_inception_event(2, 1)?;
-    //     // println!("{:?}\n\n", inception_data.event_message);
-    //     let sol_keyp = &inception_data.key_set_and_prefix.0[0];
-    //     let prefix = inception_data.event_message.event.prefix.clone();
-    //     let icp_signature = sign_event(&inception_data.event_message, sol_keyp)?;
-    //     let icp_serialized = inception_data.event_message.serialize()?;
-    //     println!("Sig = {:?}", icp_signature);
-    //     println!(
-    //         "Ver {}",
-    //         icp_signature.verify(&sol_keyp.pubkey().to_bytes(), &icp_serialized)
-    //     );
-    //     assert_eq!(prefix.to_str().len(), 44);
-    //     let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
-    //     let keri_vdr = "did:keri:local_db".to_string();
-    //     let mut keri_ref = BTreeMap::<String, String>::new();
-    //     keri_ref.insert("i".to_string(), sol_keri_did);
-    //     keri_ref.insert("ri".to_string(), keri_vdr);
-    //     println!("Tx doc {:?}", keri_ref);
-    //     println!("Msg = {:?}", bs58::encode(icp_serialized).into_string());
-    //     println!("Signature = {:?}", icp_signature);
-    //     println!("Public Key signer {:?}", sol_keyp.pubkey());
+    #[test]
+    /// inception event
+    /// Inception events are the events that surround the genesis of a new set of keys
+    /// are to be managed. This only happens once for the same set of keys, attempting
+    /// to create an inception even with the same keys will result in the same outcome
+    /// and will NOT create a new event.
+    ///
+    /// Keys involved:
+    ///
+    /// 1. `[managed keys]` One (1) are more keys are designated for managing</p>
+    /// 2. `[event signer]` The key that signs the event for authenticy. It should NOT be in the set noted in #1
+    /// 3. `[transaction signer]` The key that signs the transaction. This may be the same as #2
+    /// 4. `[transaction payer]` This is a wallet account that has SOL to pay for:
+    ///     1. `[transaction]` Running a transaction in SOL costs
+    ///     2. `[DID]` The cost to maintain the DID account on Solana
+    ///
+    fn test_inception_pass() -> SolKeriResult<()> {
+        // Setup faux keypair for management
+        let mut keys = Vec::<Keypair>::new();
+        keys.push(Keypair::new());
+        keys.push(Keypair::new());
+        let threshold = keys.len() as u64 - 1u64;
+        let sol_did_incp = generate_inception_event(keys, threshold)?;
 
-    //     Ok(())
-    // }
+        // Now we want to create two (2) instructions:
+        // 1. The ed25519 signature verification on the serialized message
+        // 2. The inception of the DID for our program to the active keys (inception)
 
-    // #[test]
-    // fn test_program_inception_pass() -> SolKeriResult<()> {
-    //     print!("Generating inception/DID... ");
-    //     let inception_data = create_inception_event(2, 1)?;
-    //     let prefix = inception_data.event_message.event.prefix.clone();
-    //     assert_eq!(prefix.to_str().len(), 44);
-    //     println!("{:?}", prefix.to_str());
+        // Spawn test validator node
+        // The 'payer' will be our wallet for now
 
-    //     println!("Creating KERI reference doc");
-    //     let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
-    //     let keri_vdr = "did:keri:local_db".to_string();
-    //     let mut keri_ref = BTreeMap::<String, String>::new();
-    //     keri_ref.insert("i".to_string(), sol_keri_did);
-    //     keri_ref.insert("ri".to_string(), keri_vdr);
-    //     // Spawn test validator node
-    //     println!("Starting local validator node");
-    //     let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
-    //     // Setup the signature verification instruction usingthe serialized key event
-    //     let sol_keyp = &inception_data.key_set_and_prefix.0[0];
-    //     let tx_kp = Keypair::new();
-    //     keri_ref.insert("owner".to_string(), tx_kp.pubkey().to_string());
-    //     let privkey = ed25519_dalek::Keypair::from_bytes(&sol_keyp.to_bytes()).unwrap();
-    //     let ix = ed25519_instruction::new_ed25519_instruction(&privkey, &keri_ref.try_to_vec()?);
+        println!("Starting local validator node");
+        let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
 
-    //     // Get the RpcClient
-    //     let connection = test_validator.get_rpc_client();
+        // Get the RpcClient
+        let connection = test_validator.get_rpc_client();
 
-    //     // Capture our programs log statements
-    //     // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
-    //     // solana_logger::setup_with_default("solana_runtime::message=debug");
+        // Capture our programs log statements
+        // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
 
-    //     println!("Submitting Solana-Keri Inception Instruction");
+        // Instruction 1 - Add ledger signature verification on our inception data
+        let serialized_incp = sol_did_incp.serialize()?;
+        let privkey = ed25519_dalek::Keypair::from_bytes(&payer.to_bytes()).unwrap();
+        let verify_instruction =
+            ed25519_instruction::new_ed25519_instruction(&privkey, &serialized_incp);
 
-    //     let accounts = &[
-    //         AccountMeta::new_readonly(tx_kp.pubkey(), true),
-    //         AccountMeta::new_readonly(payer.pubkey(), true),
-    //     ];
-    //     // let accounts = &[AccountMeta::new_readonly(payer.pubkey(), true)];
-    //     // Build instruction array and submit transaction
-    //     let txn = submit_transaction(
-    //         &connection,
-    //         &tx_kp, //payer,
-    //         &payer,
-    //         [
-    //             ix,
-    //             Instruction::new_with_borsh(
-    //                 program_pk,
-    //                 &SDMInstruction::InceptionEvent(keri_ref),
-    //                 accounts.to_vec(),
-    //             ),
-    //         ]
-    //         .to_vec(),
-    //     );
-    //     assert!(txn.is_ok());
-    //     let signature = txn.unwrap();
-    //     println!("Success... tx signature = {:?}", signature);
-    //     println!("Delay 20s for block completion. Should use websocket monitoring");
-    //     sleep(Duration::from_secs(20));
-    //     println!("Fetching transaction for signature {:?}", signature);
-    //     println!(
-    //         "{:?}",
-    //         instruction_from_transaction(&connection, &signature)
-    //     );
-    //     Ok(())
-    // }
+        // Create a PDA for our DID
+        let digest_bytes = sol_did_incp.prefix_digest();
+        let (pda_key, bump) = Pubkey::find_program_address(&[digest_bytes], &program_pk);
+        // let pda_key = Pubkey::create_program_address(&[digest_bytes, &[bump]], &id()).unwrap();
+        println!(
+            "Created PDA (pubkey) {:?} bump {} for `did:solana:{}`",
+            pda_key,
+            bump,
+            sol_did_incp.prefix_as_string()
+        );
+
+        // Setup instruction payload to get size needed for account
+        let mut prefix_bytes = [0u8; 32];
+        prefix_bytes.copy_from_slice(sol_did_incp.prefix_digest());
+        let did_account = InceptionDID {
+            prefix: prefix_bytes,
+            bump,
+            keys: sol_did_incp.active_pubkeys(),
+        };
+        let space = get_inception_datasize(&did_account);
+        let rent_exemption_amount = connection
+            .get_minimum_balance_for_rent_exemption(space)
+            .unwrap();
+
+        let init = InitializeDidAccount {
+            rent: 5 * rent_exemption_amount,
+            storage: space as u64,
+        };
+
+        // Instruction 2 - Send the DID creation instruction
+
+        println!("Submitting Solana-Keri Inception Instruction");
+
+        let accounts = &[
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pda_key, false),
+            AccountMeta::new(solana_sdk::system_program::id(), false),
+        ];
+        // Build instruction array and submit transaction
+        let txn = submit_transaction(
+            &connection,
+            &payer, //payer,
+            &payer,
+            [
+                verify_instruction,
+                Instruction::new_with_borsh(
+                    program_pk,
+                    &SDMInstruction::SDMInception(init, did_account),
+                    accounts.to_vec(),
+                ),
+            ]
+            .to_vec(),
+        );
+        assert!(txn.is_ok());
+        let signature = txn.unwrap();
+        println!("Success... tx signature = {:?}", signature);
+        println!("Delay 20s for block completion. Should use websocket monitoring");
+        sleep(Duration::from_secs(20));
+        println!("Fetching transaction for signature {:?}", signature);
+        println!(
+            "{:?}",
+            instruction_from_transaction(&connection, &signature)
+        );
+        Ok(())
+    }
 }
