@@ -11,7 +11,13 @@ pub enum SolKeriError {
     GetTransactionError,
     #[error("Failed decoding transaction")]
     DecodeTransactionError,
+    #[error("Invalid did string {0}")]
+    InvalidDidString(String),
+    #[error("DID already exists {0}")]
+    DIDExists(String),
     // Add custom errors here
+    #[error("Solana RpcError")]
+    SolRpc(#[from] solana_client::client_error::ClientError),
     #[error("Keri Error")]
     KeriError(#[from] keri::error::Error),
     #[error("Io Error")]

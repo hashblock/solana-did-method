@@ -1,4 +1,18 @@
 //! Inception event management
+//! Inception events are the events that surround the genesis of a new set of keys
+//! that are to be managed. This only happens once for the same set of keys, attempting
+//! to create an inception even with the same keys will result in the same outcome
+//! and will NOT create a new event.
+//!
+//! Keys involved in overall lifecycle from event generation to putting on the ledger:
+//!
+//! 1. `[controller keys]` One (1) are more keys are designated for managing
+//! 2. `[event signer]` The key that signs the event for authenticity. This may be one of the controller keys
+//! 3. `[transaction signer]` The key that signs the transaction.
+//! 4. `[transaction payer]` This is a wallet account that has SOL to pay for:
+//!     1. `[transaction]` Running a transaction in SOL costs
+//!     2. `[DID]` The cost to maintain the DID account on Solana
+//!
 
 use crate::errors::{SolKeriError, SolKeriResult};
 use keri::{
@@ -101,6 +115,7 @@ impl SolDidEvent for SolDidInception {
 /// managed_keys - One (1) are more keys are designated for managing</p>
 /// threshold - Number of key signatures required to unlock something
 ///
+
 pub fn generate_inception_event(
     managed_keys: Vec<Keypair>,
     threshold: u64,
@@ -160,54 +175,12 @@ pub fn generate_inception_event(
     })
 }
 
-//     let inception_data = create_inception_event(2, 1)?;
-//     // println!("{:?}\n\n", inception_data.event_message);
-//     let sol_keyp = &inception_data.key_set_and_prefix.0[0];
-//     let prefix = inception_data.event_message.event.prefix.clone();
-//     let icp_signature = sign_event(&inception_data.event_message, sol_keyp)?;
-//     let icp_serialized = inception_data.event_message.serialize()?;
-//     println!("Sig = {:?}", icp_signature);
-//     println!(
-//         "Ver {}",
-//         icp_signature.verify(&sol_keyp.pubkey().to_bytes(), &icp_serialized)
-//     );
-//     assert_eq!(prefix.to_str().len(), 44);
-//     let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
-//     let keri_vdr = "did:keri:local_db".to_string();
-//     let mut keri_ref = BTreeMap::<String, String>::new();
-//     keri_ref.insert("i".to_string(), sol_keri_did);
-//     keri_ref.insert("ri".to_string(), keri_vdr);
-//     println!("Tx doc {:?}", keri_ref);
-//     println!("Msg = {:?}", bs58::encode(icp_serialized).into_string());
-//     println!("Signature = {:?}", icp_signature);
-//     println!("Public Key signer {:?}", sol_keyp.pubkey());
-
-//     Ok(())
-// }
-
-// #[test]
-// fn test_program_inception_pass() -> SolKeriResult<()> {
-//     print!("Generating inception/DID... ");
-//     let inception_data = create_inception_event(2, 1)?;
-//     let prefix = inception_data.event_message.event.prefix.clone();
-//     assert_eq!(prefix.to_str().len(), 44);
-//     println!("{:?}", prefix.to_str());
-
-//     println!("Creating KERI reference doc");
-//     let sol_keri_did = ["did", "sol", "keri", &prefix.to_str()].join(":");
-//     let keri_vdr = "did:keri:local_db".to_string();
-//     let mut keri_ref = BTreeMap::<String, String>::new();
-//     keri_ref.insert("i".to_string(), sol_keri_did);
-//     keri_ref.insert("ri".to_string(), keri_vdr);
-//     // Spawn test validator node
-//     let privkey = ed25519_dalek::Keypair::from_bytes(&sol_keyp.to_bytes()).unwrap();
-//     let ix = ed25519_instruction::new_ed25519_instruction(&privkey, &keri_ref.try_to_vec()?);
-
-//     // Get the RpcClient
-//     let connection = test_validator.get_rpc_client();
-
 #[cfg(test)]
 mod tests {
+    use std::str::FromStr;
+
+    use solana_sdk::pubkey::Pubkey;
+
     use crate::errors::SolKeriResult;
 
     use super::*;
@@ -221,11 +194,10 @@ mod tests {
         let sol_did_res = generate_inception_event(keys, threshold);
         assert!(sol_did_res.is_ok());
         let sol_did_icp = sol_did_res.unwrap();
-        // println!("{:?}", sol_did_icp.prefix_as_string());
-        // println!("DID => {}", sol_did_icp.did_string());
-        print!("\n{}\n", serde_json::to_string(&sol_did_icp.event())?);
-        println!("Serialized length {:?}", sol_did_icp.serialize()?.len());
-
+        println!("{:?}", sol_did_icp.prefix_as_string());
+        println!("DID => {}", sol_did_icp.did_string());
+        // print!("\n{}\n", serde_json::to_string(&sol_did_icp.event())?);
+        // println!("Serialized length {:?}", sol_did_icp.serialize()?.len());
         Ok(())
     }
     #[test]

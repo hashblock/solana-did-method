@@ -23,7 +23,9 @@ pub fn entry_point(
     )?)
 }
 
+#[cfg(feature = "test-bpf")]
 #[cfg(test)]
+
 mod test {
 
     use crate::{
@@ -83,7 +85,7 @@ mod test {
             .saturating_add(PUBKEY_BYTES * my_did.keys.len())
     }
     #[tokio::test]
-    #[cfg(feature = "test-bpf")]
+
     async fn test_inception_progaccount_pass() {
         // Accounts being managed
         let dummy_pk1 = Pubkey::from_str("FDMHqNqN82QSjEaEuqybmpXsjtX98YuTsX6YCdT99to").unwrap();

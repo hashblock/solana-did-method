@@ -2,9 +2,11 @@
 mod tests {
 
     use cli::{
-        errors::SolKeriResult,
+        errors::{SolKeriError, SolKeriResult},
         incp_event::{generate_inception_event, SolDidEvent},
-        utils::{get_inception_datasize, instruction_from_transaction},
+        utils::{
+            gen_pda_pk, get_did_pda_account, get_inception_datasize, instruction_from_transaction,
+        },
     };
 
     use solana_client::rpc_client::RpcClient;
@@ -84,28 +86,8 @@ mod tests {
             .unwrap())
     }
 
-    // #[inline]
-    // fn sign_event(event: &EventMessage, signer: &dyn Signer) -> SolKeriResult<Signature> {
-    //     Ok(signer.sign_message(&event.serialize()?))
-    // }
-
     #[test]
-    /// inception event
-    /// Inception events are the events that surround the genesis of a new set of keys
-    /// are to be managed. This only happens once for the same set of keys, attempting
-    /// to create an inception even with the same keys will result in the same outcome
-    /// and will NOT create a new event.
-    ///
-    /// Keys involved:
-    ///
-    /// 1. `[managed keys]` One (1) are more keys are designated for managing</p>
-    /// 2. `[event signer]` The key that signs the event for authenticy. It should NOT be in the set noted in #1
-    /// 3. `[transaction signer]` The key that signs the transaction. This may be the same as #2
-    /// 4. `[transaction payer]` This is a wallet account that has SOL to pay for:
-    ///     1. `[transaction]` Running a transaction in SOL costs
-    ///     2. `[DID]` The cost to maintain the DID account on Solana
-    ///
-    fn test_inception_pass() -> SolKeriResult<()> {
+    fn test_inception_two_controllers_pass() -> SolKeriResult<()> {
         // Setup faux keypair for management
         let mut keys = Vec::<Keypair>::new();
         keys.push(Keypair::new());
@@ -125,6 +107,21 @@ mod tests {
 
         // Get the RpcClient
         let connection = test_validator.get_rpc_client();
+        // Create a PDA for our DID
+        let digest_bytes = sol_did_incp.prefix_digest();
+        let (pda_key, bump) = gen_pda_pk(digest_bytes, &program_pk);
+        // If the account exists, we have a problem
+        let check_pda_res = get_did_pda_account(&connection, &pda_key);
+        if check_pda_res.is_ok() {
+            return Err(SolKeriError::DIDExists(sol_did_incp.did_string()));
+        }
+        // Account does not exist
+        println!(
+            "Created PDA (pubkey) {:?} bump {} for `did:solana:{}`",
+            pda_key,
+            bump,
+            sol_did_incp.prefix_as_string()
+        );
 
         // Capture our programs log statements
         // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
@@ -135,17 +132,6 @@ mod tests {
         let privkey = ed25519_dalek::Keypair::from_bytes(&payer.to_bytes()).unwrap();
         let verify_instruction =
             ed25519_instruction::new_ed25519_instruction(&privkey, &serialized_incp);
-
-        // Create a PDA for our DID
-        let digest_bytes = sol_did_incp.prefix_digest();
-        let (pda_key, bump) = Pubkey::find_program_address(&[digest_bytes], &program_pk);
-        // let pda_key = Pubkey::create_program_address(&[digest_bytes, &[bump]], &id()).unwrap();
-        println!(
-            "Created PDA (pubkey) {:?} bump {} for `did:solana:{}`",
-            pda_key,
-            bump,
-            sol_did_incp.prefix_as_string()
-        );
 
         // Setup instruction payload to get size needed for account
         let mut prefix_bytes = [0u8; 32];
@@ -191,10 +177,9 @@ mod tests {
         );
         assert!(txn.is_ok());
         let signature = txn.unwrap();
-        println!("Success... tx signature = {:?}", signature);
+
         println!("Delay 20s for block completion. Should use websocket monitoring");
         sleep(Duration::from_secs(20));
-        println!("Fetching transaction for signature {:?}", signature);
         println!(
             "{:?}",
             instruction_from_transaction(&connection, &signature)
