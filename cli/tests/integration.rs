@@ -9,6 +9,7 @@ mod tests {
         },
     };
 
+    use keri::{database::sled::SledEventDatabase, error::Error, keri::Keri};
     use solana_client::rpc_client::RpcClient;
     use solana_did_method::{
         id,
@@ -25,7 +26,13 @@ mod tests {
         transaction::Transaction,
     };
     use solana_test_validator::{TestValidator, TestValidatorGenesis};
-    use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
+    use std::{
+        path::PathBuf,
+        str::FromStr,
+        sync::{Arc, Mutex},
+        thread::sleep,
+        time::Duration,
+    };
 
     /// Location/Name of ProgramTestGenesis ledger
     const LEDGER_PATH: &str = "./.ledger";
@@ -184,6 +191,40 @@ mod tests {
             "{:?}",
             instruction_from_transaction(&connection, &signature)
         );
+        Ok(())
+    }
+    #[test]
+    fn test_keri() -> Result<(), Error> {
+        use tempfile::Builder;
+
+        // Create test db and event processor.
+        let root = Builder::new().prefix("test-db").tempdir().unwrap();
+        println!("Root path = {:?}", root.path().display());
+        std::fs::create_dir_all(root.path()).unwrap();
+        let db_alice = Arc::new(SledEventDatabase::new(root.path()).unwrap());
+        let alice_key_manager = {
+            #[cfg(feature = "wallet")]
+            {
+                let mut alice_key_manager = UnlockedWallet::new("alice");
+                crate::signer::wallet::incept_keys(&mut alice_key_manager)?;
+                Arc::new(Mutex::new(alice_key_manager))
+            }
+            #[cfg(not(feature = "wallet"))]
+            {
+                use keri::signer::CryptoBox;
+                Arc::new(Mutex::new(CryptoBox::new()?))
+            }
+        };
+        // Init alice.
+        let mut alice = Keri::new(Arc::clone(&db_alice), alice_key_manager)?;
+        // Get alice's inception event.
+        let alice_incepted = alice.incept()?;
+        println!("{:?}", alice_incepted.event_message.serialize());
+        // Rotation event.
+        let alice_rot = alice.rotate()?;
+        assert_eq!(alice.get_state()?.unwrap().sn, 1);
+        println!("{:?}", alice_rot.event_message.event.prefix);
+
         Ok(())
     }
 }

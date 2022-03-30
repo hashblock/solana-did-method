@@ -612,6 +612,7 @@ dependencies = [
  "solana-sdk",
  "solana-test-validator",
  "solana-transaction-status",
+ "tempfile",
  "thiserror",
 ]
 

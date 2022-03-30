@@ -58,7 +58,7 @@ pub fn get_did_pda_account_from_digest(
     prefix_digest: &Vec<u8>,
     project_pk: &Pubkey,
 ) -> SolKeriResult<Option<Account>> {
-    let (pda_pk, bump) = gen_pda_pk(prefix_digest, project_pk);
+    let (pda_pk, _bump) = gen_pda_pk(prefix_digest, project_pk);
     Ok(Some(connection.get_account(&pda_pk)?))
 }
 
