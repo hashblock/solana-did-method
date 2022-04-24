@@ -22,6 +22,7 @@ use keri::{
         sections::{key_config::nxt_commitment, threshold::SignatureThreshold, KeyConfig},
         Event, EventMessage, SerializationFormats,
     },
+    event_message::SaidEvent,
     keys::PublicKey,
     prefix::{BasicPrefix, Prefix, SelfAddressingPrefix},
 };
@@ -29,11 +30,11 @@ use solana_sdk::{signature::Keypair, signer::Signer};
 
 pub trait SolDidEvent {
     /// Get the underlying Keri event
-    fn event(&self) -> &Event;
+    fn event(&self) -> &SaidEvent<Event>;
     /// Get the underlying Keri event
-    fn event_message(&self) -> &EventMessage;
+    fn event_message(&self) -> EventMessage<SaidEvent<Event>>; //&EventMessage;
     /// Retrieve the prefix bytes
-    fn prefix_digest(&self) -> &Vec<u8>;
+    fn prefix_digest(&self) -> Vec<u8>;
     /// Retrieve the prefix as a string
     fn prefix_as_string(&self) -> String;
     /// Retrieve the 'did:solana:prefix' string
@@ -47,7 +48,7 @@ pub trait SolDidEvent {
 /// Encapsulates the result of a created Inception event
 pub struct SolDidInception {
     /// The Inception Event block
-    event_message: EventMessage,
+    event_message: EventMessage<SaidEvent<Event>>,
 
     /// Number of keys in key set required to sign for various operations
     threshold: u64,
@@ -66,12 +67,16 @@ pub struct SolDidInception {
 }
 
 impl SolDidInception {
-    fn prefix(&self) -> &SelfAddressingPrefix {
-        match &self.event_message.event.prefix {
-            // keri::prefix::IdentifierPrefix::SelfAddressing(prx) => Pubkey::new(&prx.digest),
-            keri::prefix::IdentifierPrefix::SelfAddressing(prx) => prx,
+    fn prefix(&self) -> SelfAddressingPrefix {
+        match self.event().get_prefix() {
+            keri::prefix::IdentifierPrefix::SelfAddressing(prefix) => prefix,
             _ => unreachable!(),
         }
+        // match &self.event_message.event.prefix {
+        //     // keri::prefix::IdentifierPrefix::SelfAddressing(prx) => Pubkey::new(&prx.digest),
+        //     keri::prefix::IdentifierPrefix::SelfAddressing(prx) => prx,
+        //     _ => unreachable!(),
+        // }
     }
 
     pub fn active_pubkeys(&self) -> Vec<solana_sdk::pubkey::Pubkey> {
@@ -82,12 +87,12 @@ impl SolDidInception {
     }
 }
 impl SolDidEvent for SolDidInception {
-    fn event(&self) -> &Event {
+    fn event(&self) -> &SaidEvent<Event> {
         &self.event_message.event
     }
 
-    fn event_message(&self) -> &EventMessage {
-        &self.event_message
+    fn event_message(&self) -> EventMessage<SaidEvent<keri::event::Event>> {
+        self.event_message.clone()
     }
     fn prefix_as_string(&self) -> String {
         self.prefix().to_str()
@@ -101,8 +106,8 @@ impl SolDidEvent for SolDidInception {
         Ok(self.event_message().serialize()?)
     }
 
-    fn prefix_digest(&self) -> &Vec<u8> {
-        &self.prefix().digest
+    fn prefix_digest(&self) -> Vec<u8> {
+        self.prefix().digest.clone()
     }
 }
 

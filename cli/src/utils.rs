@@ -28,9 +28,15 @@ pub fn instruction_from_transaction(
             Some(tx) => {
                 // println!("Proof instruction {:?}", tx.message.instructions[0]);
                 // println!("Program instruction {:?}", tx.message.instructions[1]);
-                Ok(SDMInstruction::try_from_slice(
-                    &tx.message.instructions[1].data,
-                )?)
+                let data = match tx.message {
+                    solana_sdk::message::VersionedMessage::Legacy(leg) => {
+                        SDMInstruction::try_from_slice(&leg.instructions[1].data)?
+                    }
+                    solana_sdk::message::VersionedMessage::V0(v0) => {
+                        SDMInstruction::try_from_slice(&v0.instructions[1].data)?
+                    }
+                };
+                Ok(data)
             }
             None => Err(SolKeriError::DecodeTransactionError),
         }
