@@ -2,6 +2,7 @@
 mod clparse;
 mod errors;
 mod incp_event;
+mod pasta_keys;
 mod utils;
 pub use errors::SolKeriResult;
 use std::env;
