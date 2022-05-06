@@ -1,9 +1,11 @@
 use std::fmt;
 
+use bs58::decode::Error;
 use pasta_curves::group::ff::Field;
 use pasta_curves::group::ff::PrimeField;
 use pasta_curves::group::Group;
 use pasta_curves::group::GroupEncoding;
+use pasta_curves::Fq;
 use pasta_curves::{pallas::Scalar, Ep};
 use rand::rngs::OsRng;
 use rand::CryptoRng;
@@ -31,6 +33,31 @@ impl PastaKeyPair {
 
     pub fn secret(&self) -> Fqp {
         self.0
+    }
+
+    pub fn to_bytes(&self) -> [u8; 32] {
+        self.0.to_repr()
+    }
+
+    /// Returns this `Keypair` as a base58-encoded string
+    pub fn to_base58_string(&self) -> String {
+        bs58::encode(&self.to_bytes()).into_string()
+    }
+
+    /// Recovers a `Keypair` from a base58-encoded string
+    pub fn from_base58_string(s: &str) -> Result<Self, Error> {
+        let mut inbuf = [0u8; 32];
+        let obuf = bs58::decode(s).into_vec().unwrap();
+        if obuf.len() != 32 {
+            return Err(bs58::decode::Error::BufferTooSmall);
+        } else {
+            let mut index = 0;
+            for b in obuf {
+                inbuf[index] = b;
+                index += 1;
+            }
+        }
+        Ok(Self(Fq::from_repr(inbuf).unwrap()))
     }
 
     pub fn public_key(&self) -> PastaPublicKey {
@@ -67,5 +94,28 @@ impl PastaPublicKey {
         let mut bff = [0u8; 32];
         let _ = bs58::decode(s).into(&mut bff).unwrap();
         Self(Ep::from_bytes(&bff).unwrap())
+    }
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_keypair_bs58() {
+        let keypair = PastaKeyPair::new();
+        let o58 = keypair.to_base58_string();
+        println!("o58 {}", o58);
+        let keypair = PastaKeyPair::from_base58_string(&o58).unwrap();
+        println!("kp from o58 {:?}", keypair);
+    }
+    #[test]
+    fn test_publickey_bs58() {
+        let keypair = PastaKeyPair::new();
+        println!("Secret 1 {:?}", keypair);
+        let pkey = keypair.public_key();
+        println!("Pubkey 1 {}", pkey.to_base58_string());
+        let pkey =
+            PastaPublicKey::from_base58_string("GybzWZH3QJjAjATn5WozC1TThUZhCnea3pPMWc7KbP1X");
+        println!("Pubkey 2 {}", pkey.to_base58_string());
     }
 }
