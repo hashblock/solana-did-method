@@ -3,7 +3,10 @@ mod tests {
 
     use cli::{
         errors::{SolKeriError, SolKeriResult},
-        incp_event::{generate_inception_event, SolDidEvent},
+        incp_event::{
+            generate_pasta_inception_event, generate_solana_inception_event, SolDidEvent,
+        },
+        pasta_keys::PastaKeypair,
         utils::{
             gen_pda_pk, get_did_pda_account, get_inception_datasize, instruction_from_transaction,
         },
@@ -94,13 +97,13 @@ mod tests {
     }
 
     #[test]
-    fn test_inception_two_controllers_pass() -> SolKeriResult<()> {
+    fn test_solana_inception_two_controllers_pass() -> SolKeriResult<()> {
         // Setup faux keypair for management
         let mut keys = Vec::<Keypair>::new();
         keys.push(Keypair::new());
         keys.push(Keypair::new());
         let threshold = keys.len() as u64 - 1u64;
-        let sol_did_incp = generate_inception_event(keys, threshold)?;
+        let sol_did_incp = generate_solana_inception_event(keys, threshold)?;
 
         // Now we want to create two (2) instructions:
         // 1. The ed25519 signature verification on the serialized message
@@ -147,6 +150,107 @@ mod tests {
             prefix: prefix_bytes,
             bump,
             keys: sol_did_incp.active_pubkeys(),
+        };
+        let space = get_inception_datasize(&did_account);
+        let rent_exemption_amount = connection
+            .get_minimum_balance_for_rent_exemption(space)
+            .unwrap();
+
+        let init = InitializeDidAccount {
+            rent: 5 * rent_exemption_amount,
+            storage: space as u64,
+        };
+
+        // Instruction 2 - Send the DID creation instruction
+
+        println!("Submitting Solana-Keri Inception Instruction");
+
+        let accounts = &[
+            AccountMeta::new(payer.pubkey(), true),
+            AccountMeta::new(pda_key, false),
+            AccountMeta::new(solana_sdk::system_program::id(), false),
+        ];
+        // Build instruction array and submit transaction
+        let txn = submit_transaction(
+            &connection,
+            &payer, //payer,
+            &payer,
+            [
+                verify_instruction,
+                Instruction::new_with_borsh(
+                    program_pk,
+                    &SDMInstruction::SDMInception(init, did_account),
+                    accounts.to_vec(),
+                ),
+            ]
+            .to_vec(),
+        );
+        assert!(txn.is_ok());
+        let signature = txn.unwrap();
+
+        println!("Delay 20s for block completion. Should use websocket monitoring");
+        sleep(Duration::from_secs(20));
+        println!(
+            "{:?}",
+            instruction_from_transaction(&connection, &signature)
+        );
+        Ok(())
+    }
+    #[test]
+    fn test_pasta_inception_two_controllers_pass() -> SolKeriResult<()> {
+        // Setup faux keypair for management
+        let mut keys = Vec::<PastaKeypair>::new();
+        keys.push(PastaKeypair::new());
+        keys.push(PastaKeypair::new());
+        let threshold = keys.len() as u64 - 1u64;
+        let pasta_did_incp = generate_pasta_inception_event(keys, threshold)?;
+
+        // Now we want to create two (2) instructions:
+        // 1. The ed25519 signature verification on the serialized message
+        // 2. The inception of the DID for our program to the active keys (inception)
+
+        // Spawn test validator node
+        // The 'payer' will be our wallet for now
+
+        println!("Starting local validator node");
+        let (test_validator, payer, program_pk) = clean_ledger_setup_validator()?;
+
+        // Get the RpcClient
+        let connection = test_validator.get_rpc_client();
+        // Create a PDA for our DID
+        let digest_bytes = pasta_did_incp.prefix_digest();
+        let (pda_key, bump) = gen_pda_pk(&digest_bytes, &program_pk);
+        // If the account exists, we have a problem
+        let check_pda_res = get_did_pda_account(&connection, &pda_key);
+        if check_pda_res.is_ok() {
+            return Err(SolKeriError::DIDExists(pasta_did_incp.did_string()));
+        }
+        // Account does not exist
+        println!(
+            "Created PDA (pubkey) {:?} bump {} for `did:solana:{}`",
+            pda_key,
+            bump,
+            pasta_did_incp.prefix_as_string()
+        );
+
+        // Capture our programs log statements
+        // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
+
+        // Instruction 1 - Add ledger signature verification on our inception data
+        let serialized_incp = pasta_did_incp.serialize()?;
+        let privkey = ed25519_dalek::Keypair::from_bytes(&payer.to_bytes()).unwrap();
+        let verify_instruction =
+            ed25519_instruction::new_ed25519_instruction(&privkey, &serialized_incp);
+
+        // Setup instruction payload to get size needed for account
+        let mut prefix_bytes = [0u8; 32];
+        prefix_bytes.copy_from_slice(&pasta_did_incp.prefix_digest());
+
+        let did_account = InceptionDID {
+            prefix: prefix_bytes,
+            bump,
+            keys: pasta_did_incp.active_pubkeys_as_solana(),
         };
         let space = get_inception_datasize(&did_account);
         let rent_exemption_amount = connection

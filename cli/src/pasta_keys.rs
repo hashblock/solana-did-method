@@ -15,8 +15,8 @@ use rand::RngCore;
 pub type Fqp = Scalar;
 
 #[derive(Clone, Copy)]
-pub struct PastaKeyPair(pub Fqp);
-impl PastaKeyPair {
+pub struct PastaKeypair(pub Fqp);
+impl PastaKeypair {
     /// Constructs a new, random `Keypair` using a caller-proveded RNG
     fn generate<R>(csprng: &mut R) -> Self
     where
@@ -60,13 +60,13 @@ impl PastaKeyPair {
         Ok(Self(Fq::from_repr(inbuf).unwrap()))
     }
 
-    pub fn public_key(&self) -> PastaPublicKey {
+    pub fn pubkey(&self) -> PastaPublicKey {
         PastaPublicKey(Ep::generator() * self.0)
     }
 }
 
 /// For debugging but we need to get to the 64 bytes?
-impl fmt::Debug for PastaKeyPair {
+impl fmt::Debug for PastaKeypair {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let tmp = self.0.to_repr();
         write!(f, "{}", bs58::encode(tmp).into_string())?;
@@ -79,7 +79,7 @@ pub struct PastaPublicKey(pub Ep);
 impl PastaPublicKey {
     pub fn new_random() -> Self {
         let mut rng = OsRng::default();
-        PastaKeyPair::generate(&mut rng).public_key()
+        PastaKeypair::generate(&mut rng).pubkey()
     }
 
     pub fn to_bytes(&self) -> [u8; 32] {
@@ -102,17 +102,17 @@ mod tests {
 
     #[test]
     fn test_keypair_bs58() {
-        let keypair = PastaKeyPair::new();
+        let keypair = PastaKeypair::new();
         let o58 = keypair.to_base58_string();
         println!("o58 {}", o58);
-        let keypair = PastaKeyPair::from_base58_string(&o58).unwrap();
+        let keypair = PastaKeypair::from_base58_string(&o58).unwrap();
         println!("kp from o58 {:?}", keypair);
     }
     #[test]
     fn test_publickey_bs58() {
-        let keypair = PastaKeyPair::new();
+        let keypair = PastaKeypair::new();
         println!("Secret 1 {:?}", keypair);
-        let pkey = keypair.public_key();
+        let pkey = keypair.pubkey();
         println!("Pubkey 1 {}", pkey.to_base58_string());
         let pkey =
             PastaPublicKey::from_base58_string("GybzWZH3QJjAjATn5WozC1TThUZhCnea3pPMWc7KbP1X");
