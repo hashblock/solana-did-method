@@ -16,7 +16,7 @@ mod tests {
     use solana_client::rpc_client::RpcClient;
     use solana_did_method::{
         id,
-        instruction::{InceptionDID, InitializeDidAccount, SDMInstruction},
+        instruction::{InceptionDID, InitializeDidAccount, SDMInstruction, SMDKeyType},
     };
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::{
@@ -147,6 +147,7 @@ mod tests {
         let mut prefix_bytes = [0u8; 32];
         prefix_bytes.copy_from_slice(&sol_did_incp.prefix_digest());
         let did_account = InceptionDID {
+            keytype: SMDKeyType::Ed25519,
             prefix: prefix_bytes,
             bump,
             keys: sol_did_incp.active_pubkeys(),
@@ -248,6 +249,7 @@ mod tests {
         prefix_bytes.copy_from_slice(&pasta_did_incp.prefix_digest());
 
         let did_account = InceptionDID {
+            keytype: SMDKeyType::PASTA,
             prefix: prefix_bytes,
             bump,
             keys: pasta_did_incp.active_pubkeys_as_solana(),

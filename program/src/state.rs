@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 
 pub use crate::error::SDMProgramError;
-use crate::instruction::InceptionDID;
+use crate::instruction::{InceptionDID, SMDKeyType};
 
 /// Indicates the current version supported
 /// If different from persist state, a copy on
@@ -18,9 +18,11 @@ pub enum SDMDidState {
     Inception,
     Rotated,
 }
+
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
 pub struct SDMDidDocCurrent {
     state: SDMDidState,
+    keytype: SMDKeyType,
     prefix: [u8; 32],
     bump: u8,
     pub keys: Vec<Pubkey>,
@@ -55,6 +57,7 @@ impl SDMDid {
                 version: CURRENT_DATA_VERSION,
                 did_doc: SDMDidDocCurrent {
                     state: SDMDidState::Inception,
+                    keytype: with.keytype,
                     prefix: with.prefix,
                     bump: with.bump,
                     keys: with.keys,

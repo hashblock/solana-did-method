@@ -7,7 +7,14 @@ use solana_program::{
 };
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
+pub enum SMDKeyType {
+    Ed25519,
+    PASTA,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
 pub struct InceptionDID {
+    pub keytype: SMDKeyType,
     pub prefix: [u8; 32],
     pub bump: u8,
     pub keys: Vec<Pubkey>,
