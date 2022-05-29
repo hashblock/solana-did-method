@@ -240,6 +240,7 @@ mod tests {
 
         // Instruction 1 - Add ledger signature verification on our inception data
         let serialized_incp = pasta_did_incp.serialize()?;
+        println!("Size of INCP = {}", serialized_incp.len());
         let privkey = ed25519_dalek::Keypair::from_bytes(&payer.to_bytes()).unwrap();
         let verify_instruction =
             ed25519_instruction::new_ed25519_instruction(&privkey, &serialized_incp);
@@ -299,38 +300,41 @@ mod tests {
         );
         Ok(())
     }
-    // #[test]
-    // fn test_keri() -> Result<(), Error> {
-    //     use tempfile::Builder;
+    #[test]
+    fn test_keri() -> Result<(), Error> {
+        use tempfile::Builder;
+        // Create test db and event processor.
+        let root = Builder::new().prefix("test-db").tempdir().unwrap();
+        println!("Root path = {:?}", root.path().display());
+        std::fs::create_dir_all(root.path()).unwrap();
+        let db_alice = Arc::new(SledEventDatabase::new(root.path()).unwrap());
+        let alice_key_manager = {
+            #[cfg(feature = "wallet")]
+            {
+                let mut alice_key_manager = UnlockedWallet::new("alice");
+                crate::signer::wallet::incept_keys(&mut alice_key_manager)?;
+                Arc::new(Mutex::new(alice_key_manager))
+            }
+            #[cfg(not(feature = "wallet"))]
+            {
+                use keri::signer::CryptoBox;
+                Arc::new(Mutex::new(CryptoBox::new()?))
+            }
+        };
+        // Init alice.
+        let mut alice = Keri::new(Arc::clone(&db_alice), alice_key_manager)?;
+        // Get alice's inception event.
+        let alice_incepted = alice.incept(None)?;
+        println!(
+            "Alice post-inception prefix {:?}",
+            alice_incepted.event_message.event.get_prefix()
+        );
+        //println!("{:?}", alice_incepted.event_message.serialize());
+        // Rotation event.
+        let alice_rot = alice.rotate()?;
+        assert_eq!(alice.get_state()?.unwrap().sn, 1);
+        println!("{:?}", alice_rot.event_message.event.get_prefix());
 
-    //     // Create test db and event processor.
-    //     let root = Builder::new().prefix("test-db").tempdir().unwrap();
-    //     println!("Root path = {:?}", root.path().display());
-    //     std::fs::create_dir_all(root.path()).unwrap();
-    //     let db_alice = Arc::new(SledEventDatabase::new(root.path()).unwrap());
-    //     let alice_key_manager = {
-    //         #[cfg(feature = "wallet")]
-    //         {
-    //             let mut alice_key_manager = UnlockedWallet::new("alice");
-    //             crate::signer::wallet::incept_keys(&mut alice_key_manager)?;
-    //             Arc::new(Mutex::new(alice_key_manager))
-    //         }
-    //         #[cfg(not(feature = "wallet"))]
-    //         {
-    //             use keri::signer::CryptoBox;
-    //             Arc::new(Mutex::new(CryptoBox::new()?))
-    //         }
-    //     };
-    //     // Init alice.
-    //     let mut alice = Keri::new(Arc::clone(&db_alice), alice_key_manager)?;
-    //     // Get alice's inception event.
-    //     let alice_incepted = alice.incept()?;
-    //     println!("{:?}", alice_incepted.event_message.serialize());
-    //     // Rotation event.
-    //     let alice_rot = alice.rotate()?;
-    //     assert_eq!(alice.get_state()?.unwrap().sn, 1);
-    //     println!("{:?}", alice_rot.event_message.event.prefix);
-
-    //     Ok(())
-    // }
+        Ok(())
+    }
 }

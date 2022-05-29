@@ -144,11 +144,6 @@ impl PastaDidInception {
             keri::prefix::IdentifierPrefix::SelfAddressing(prefix) => prefix,
             _ => unreachable!(),
         }
-        // match &self.event_message.event.prefix {
-        //     // keri::prefix::IdentifierPrefix::SelfAddressing(prx) => Pubkey::new(&prx.digest),
-        //     keri::prefix::IdentifierPrefix::SelfAddressing(prx) => prx,
-        //     _ => unreachable!(),
-        // }
     }
 
     pub fn active_pubkeys_as_solana(&self) -> Vec<solana_sdk::pubkey::Pubkey> {
