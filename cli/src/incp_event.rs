@@ -223,6 +223,7 @@ pub fn generate_solana_inception_event(
     let next_keri_basic_keys = next_kp_set
         .iter()
         .map(|k| {
+            // SelfAddressingPrefix
             BasicPrefix::new(
                 Basic::Ed25519,
                 PublicKey::new(k.pubkey().to_bytes().to_vec()),
