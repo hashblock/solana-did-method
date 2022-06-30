@@ -1,14 +1,11 @@
 //! cli for managing sol::keri dids and keys
 mod clparse;
-mod errors;
-mod incp_event;
-mod pasta_keys;
-mod utils;
-pub use errors::SolKeriResult;
-use std::env;
-pub use utils::instruction_from_transaction;
+pub mod errors;
 
-fn main() -> SolKeriResult<()> {
+pub use errors::SolDidResult;
+use std::env;
+
+fn main() -> SolDidResult<()> {
     println!("Current directory {:?}", env::current_dir());
     Ok(())
 }

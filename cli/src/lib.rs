@@ -1,6 +1,5 @@
 //! For integration testing
 
 pub mod errors;
-pub mod incp_event;
-pub mod pasta_keys;
-pub mod utils;
+pub mod pkey_wrap;
+pub mod skey_wrap;

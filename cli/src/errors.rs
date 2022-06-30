@@ -4,7 +4,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 #[error("...")]
-pub enum SolKeriError {
+pub enum SolDidError {
     #[error("Threshold exceeds allowed size {0}")]
     ThresholdError(usize),
     #[error("Failed getting transaction")]
@@ -16,14 +16,15 @@ pub enum SolKeriError {
     #[error("DID already exists {0}")]
     DIDExists(String),
     // Add custom errors here
+    // Add library/crate errors here
     #[error("Solana RpcError")]
     SolRpc(#[from] solana_client::client_error::ClientError),
-    #[error("Keri Error")]
-    KeriError(#[from] keri::error::Error),
     #[error("Io Error")]
     IoError(#[from] std::io::Error),
-    #[error("Serde Error")]
-    SerdeError(#[from] serde_json::Error),
+    #[error("HBKR Error")]
+    HbkrError(#[from] hbkr_rs::errors::KrError),
+    // #[error("Serde Error")]
+    // SerdeError(#[from] serde_json::Error),
 }
 
-pub type SolKeriResult<T> = std::result::Result<T, SolKeriError>;
+pub type SolDidResult<T> = std::result::Result<T, SolDidError>;
