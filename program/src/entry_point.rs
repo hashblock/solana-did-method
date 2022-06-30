@@ -30,7 +30,7 @@ mod test {
 
     use crate::{
         id,
-        instruction::{InceptionDID, InitializeDidAccount, SDMInstruction},
+        instruction::{InceptionDID, InitializeDidAccount, SDMInstruction, SMDKeyType},
         state::{SDMDid, SDMDidState},
     };
 
@@ -116,6 +116,7 @@ mod test {
             prefix: r,
             bump,
             keys,
+            keytype: SMDKeyType::Ed25519,
         };
         let data_size = get_datasize(&faux_account);
 
