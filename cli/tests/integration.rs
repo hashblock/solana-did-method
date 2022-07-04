@@ -1,14 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use cli::{errors::SolDidResult, pkey_wrap::PastaKeySet, skey_wrap::SolanaKeySet};
-    use hbkr_rs::{
-        basic::Basic, event::Event, event_message::EventMessage, incept, rotate,
-        said_event::SaidEvent,
+    use cli::{
+        errors::SolDidResult, pkey_wrap::PastaKeySet, skey_wrap::SolanaKeySet, wallet::to_json,
     };
-
-    fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
-        print!("{title}\n{}\n", serde_json::to_string(event).unwrap());
-    }
+    use hbkr_rs::{basic::Basic, incept, rotate};
 
     #[test]
     fn test_basic_with_pasta_pass() -> SolDidResult<()> {

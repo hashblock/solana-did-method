@@ -1627,12 +1627,13 @@ checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
 
 [[package]]
 name = "hbkr-rs"
-version = "0.1.0"
+version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5cd807513e6b50f7e8d32b5fe5b5fc9843f47ad0a34b4273a05d468b9d015594"
+checksum = "3f7ced819a2fbcae5e8498c686f8f5edbf4036afbf186781944c277e652be0ed"
 dependencies = [
  "base64 0.13.0",
  "blake3",
+ "borsh",
  "bs58",
  "chrono",
  "rmp-serde",
