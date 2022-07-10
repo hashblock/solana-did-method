@@ -5,6 +5,8 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 #[error("...")]
 pub enum SolDidError {
+    #[error("Solana default configuration not found")]
+    SolanaConfigMissing,
     #[error("Could not find HOME directory")]
     HomeNotFoundError,
     #[error("{0} not found in {1}")]
@@ -37,6 +39,8 @@ pub enum SolDidError {
     IoError(#[from] std::io::Error),
     #[error("HBKR Error")]
     HbkrError(#[from] hbkr_rs::errors::KrError),
+    #[error("Std Error")]
+    StdError(#[from] Box<dyn std::error::Error>),
     // #[error("Serde Error")]
     // SerdeError(#[from] serde_json::Error),
 }

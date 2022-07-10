@@ -2,6 +2,7 @@
 name = "cli"
 version = "0.2.0"
 edition = "2021"
+description = "solana-did-methond file system wallet CLI"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -9,15 +10,18 @@ edition = "2021"
 base64 = "0.13.0"
 borsh  = {version="0.9.3", feature="borsh_skip"}
 bs58 = "0.4.0"
+clap = { version = "3", features = ["cargo"] }
 ed25519-dalek ="1.0.1"
 hbpasta-rs ="0.1.0"
 hbkr-rs ="0.2.1"
 serde_json = "1.0.81"
 solana-client = "1.10.28"
+solana-cli-config = "1.10.28"
 solana-did-method = {path="../program",version="0.2.0"}
 solana-sdk = "1.10.28"
 solana-transaction-status = "1.10.28"
 thiserror = "1.0"
+tokio = { version = "1", features = ["full"] }
 
 [dev-dependencies]
 solana-sdk = "1.10.28"

@@ -2,11 +2,32 @@
 mod clparse;
 pub mod errors;
 
-pub use errors::SolDidResult;
-use std::env;
+use cli::errors::{SolDidError, SolDidResult};
+// pub use errors::SolDidResult;
+use solana_client::nonblocking::rpc_client::RpcClient;
+use solana_sdk::{
+    commitment_config::CommitmentConfig,
+    signer::{keypair::read_keypair_file, Signer},
+};
 
-fn main() -> SolDidResult<()> {
-    println!("Current directory {:?}", env::current_dir());
+use crate::clparse::command_line;
+
+/// Generates the default RpcClient and Signer from local configuration
+fn default_config() -> SolDidResult<(RpcClient, Box<dyn Signer>)> {
+    let cli_config = match &*solana_cli_config::CONFIG_FILE {
+        Some(cfgpath) => solana_cli_config::Config::load(&cfgpath)?,
+        None => return Err(SolDidError::SolanaConfigMissing),
+    };
+    let default_signer = read_keypair_file(cli_config.keypair_path)?;
+    let rpc_client =
+        RpcClient::new_with_commitment(cli_config.json_rpc_url, CommitmentConfig::confirmed());
+    Ok((rpc_client, Box::new(default_signer)))
+}
+#[tokio::main]
+async fn main() -> SolDidResult<()> {
+    let cmdline = command_line().get_matches();
+    let (_command, _matches) = cmdline.subcommand().unwrap();
+    let (_client, _signer) = default_config()?;
     Ok(())
 }
 
@@ -16,12 +37,23 @@ mod tests {
     use std::str::FromStr;
 
     use borsh::BorshSerialize;
+    use cli::errors::SolDidResult;
     use solana_sdk::pubkey::Pubkey;
+
+    use crate::default_config;
 
     #[derive(BorshSerialize, Debug)]
     struct FauxAccount {
         prefix: Pubkey,
         keys: Vec<Pubkey>,
+    }
+
+    #[test]
+    fn test_main() -> SolDidResult<()> {
+        let (client, signer) = default_config()?;
+        println!("{:?}", client.url());
+        println!("{:?}", signer);
+        Ok(())
     }
     #[test]
     fn test_serialization() {
