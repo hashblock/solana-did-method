@@ -31,9 +31,9 @@ pub struct Wallet {
     #[borsh_skip]
     keys: Vec<Keys>,
 }
-
+#[allow(dead_code)]
 impl Wallet {
-    /// Add new Keys with name
+    /// Add new managed Keys(et) with name
     fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
         let check = keysets.name.clone();
         if self.keynames.contains(&check) {
@@ -44,39 +44,6 @@ impl Wallet {
             self.save()?;
             Ok(())
         }
-    }
-
-    /// Convert hbkr KeySet to wallet keys
-    pub fn register_keyset(
-        &mut self,
-        name: &String,
-        key_set: &dyn KeySet,
-        key_type: Basic,
-        current_key_state: KeyState,
-    ) -> SolDidResult<()> {
-        let set_type = match key_type {
-            Basic::ED25519 => KeyType::ED25519,
-            Basic::PASTA => KeyType::PASTA,
-            // _ => return Err(SolDidError::UnknownKeyTypeError),
-        };
-        let next_state = match current_key_state {
-            KeyState::PreInception | KeyState::Incepted | KeyState::Rotated => {
-                KeyState::NextRotation
-            }
-            KeyState::RotatedOut => todo!(),
-            KeyState::Revoked => KeyState::Revoked,
-            _ => todo!(),
-        };
-        let mut keys = Keys::default();
-        keys.name = name.to_string();
-        for n in key_set.current_private_keys() {
-            keys.add_key(Key::new(current_key_state, set_type, &n.as_base58_string()))?;
-        }
-        for n in key_set.next_private_keys() {
-            keys.add_key(Key::new(next_state, set_type, &n.as_base58_string()))?;
-        }
-        self.add_keys(keys)?;
-        Ok(())
     }
 
     /// Instantiate a wallet for first time
@@ -101,7 +68,7 @@ impl Wallet {
     }
 
     // Helper function
-    fn load_key<'a>(base: PathBuf, folder: &String) -> SolDidResult<Keys> {
+    fn load_key(base: PathBuf, folder: &String) -> SolDidResult<Keys> {
         let mut key_file = base.clone();
         key_file.push(folder);
         Keys::load(&mut key_file)
@@ -121,11 +88,7 @@ impl Wallet {
                 iw.keys = iw
                     .keynames
                     .iter()
-                    .map(|kn| {
-                        Wallet::load_key(loc.clone(), kn).unwrap()
-                        // key_file.push(kn);
-                        // Keys::read(&key_file).unwrap()
-                    })
+                    .map(|kn| Wallet::load_key(loc.clone(), kn).unwrap())
                     .collect::<Vec<Keys>>();
                 Ok(iw)
             }
@@ -157,34 +120,186 @@ pub struct Keys {
     #[borsh_skip]
     dirty: bool,
     name: String,
-    keysets: Vec<Key>,
+    threshold: u64,
+    keysets_current: Vec<Key>,
+    keysets_next: Vec<Key>,
+    keysets_past: Vec<Key>,
 }
 
+enum KeyBlock {
+    NONE,
+    CURRENT,
+    NEXT,
+    PAST,
+}
 impl Keys {
-    pub fn add_key(&mut self, in_key: Key) -> SolDidResult<bool> {
-        if !self.keysets.contains(&in_key) {
-            self.keysets.push(in_key);
-            self.dirty = true;
-            Ok(true)
+    /// Accepts a native keyset that is pre-incepted
+    /// distributes current (PreInception) and next NextRotation constructs
+    pub fn from_pre_incept_set(
+        name: &String,
+        key_set: &dyn KeySet,
+        key_type: Basic,
+        threshold: u64,
+    ) -> SolDidResult<Self> {
+        let set_type = match key_type {
+            Basic::ED25519 => KeyType::ED25519,
+            Basic::PASTA => KeyType::PASTA,
+            // _ => return Err(SolDidError::UnknownKeyTypeError),
+        };
+        let keysets_current = key_set
+            .current_private_keys()
+            .iter()
+            .map(|k| Key::new(KeyState::PreInception, set_type, &k.as_base58_string()))
+            .collect::<Vec<Key>>();
+        let keysets_next = key_set
+            .next_private_keys()
+            .iter()
+            .map(|k| Key::new(KeyState::NextRotation, set_type, &k.as_base58_string()))
+            .collect::<Vec<Key>>();
+        Ok(Keys {
+            dirty: true,
+            name: name.clone(),
+            threshold,
+            keysets_current,
+            keysets_next,
+            keysets_past: Vec::<Key>::new(),
+        })
+    }
+    pub fn from_post_incept_set(
+        name: &String,
+        key_set: &dyn KeySet,
+        key_type: Basic,
+        threshold: u64,
+    ) -> SolDidResult<Self> {
+        let set_type = match key_type {
+            Basic::ED25519 => KeyType::ED25519,
+            Basic::PASTA => KeyType::PASTA,
+            // _ => return Err(SolDidError::UnknownKeyTypeError),
+        };
+        let keysets_current = key_set
+            .current_private_keys()
+            .iter()
+            .map(|k| Key::new(KeyState::Incepted, set_type, &k.as_base58_string()))
+            .collect::<Vec<Key>>();
+        let keysets_next = key_set
+            .next_private_keys()
+            .iter()
+            .map(|k| Key::new(KeyState::NextRotation, set_type, &k.as_base58_string()))
+            .collect::<Vec<Key>>();
+        Ok(Keys {
+            dirty: true,
+            name: name.clone(),
+            threshold,
+            keysets_current,
+            keysets_next,
+            keysets_past: Vec::<Key>::new(),
+        })
+    }
+    /// key_state_is returns the KeyState for
+    /// keys in a keyset
+    fn keys_state_is(&self, keyset: &Vec<Key>) -> SolDidResult<KeyState> {
+        let res = keyset
+            .iter()
+            .map(|key| key.key_state)
+            .collect::<HashSet<KeyState>>();
+        if res.len() > 1 {
+            Err(SolDidError::KeySetIncoherence)
+        } else if res.len() == 0 {
+            Ok(KeyState::PreInception)
         } else {
-            Err(SolDidError::DuplicateKeyError)
+            let vres = res.into_iter().collect::<Vec<_>>();
+            let vres_first = vres.first().unwrap().clone();
+            Ok(vres_first)
         }
     }
 
-    pub fn change_key_state(&mut self, key_ref: &String, new_state: KeyState) -> SolDidResult<()> {
-        let mut found = false;
-        for n in self.keysets.iter_mut() {
-            if n.key.eq(key_ref) {
-                found = true;
-                n.set_state(new_state);
-                self.dirty = false;
+    fn has_key(&self, key_string: &String) -> SolDidResult<(bool, KeyBlock)> {
+        let mut hit = false;
+        let mut block = KeyBlock::NONE;
+        // Check current
+        self.keysets_current.iter().for_each(|n| {
+            if key_string == &n.key {
+                hit = true;
+                block = KeyBlock::CURRENT;
+            }
+        });
+        // Check next
+        if !hit {
+            self.keysets_next.iter().for_each(|n| {
+                if key_string == &n.key {
+                    hit = true;
+                    block = KeyBlock::NEXT;
+                }
+            })
+        };
+        // Check remaining
+        if !hit {
+            self.keysets_past.iter().for_each(|n| {
+                if key_string == &n.key {
+                    hit = true;
+                    block = KeyBlock::PAST;
+                }
+            })
+        };
+        Ok((hit, block))
+    }
+
+    /// add_key_to_current can add a key into the current keyset if the
+    /// key did not previously exist and the state of keys in
+    /// current are in pre-inception
+    pub fn add_key_to_current(&mut self, in_key: Key) -> SolDidResult<bool> {
+        let (hit, _block) = self.has_key(&in_key.key)?;
+        if hit {
+            return Err(SolDidError::KeysExistError(in_key.key));
+        } else {
+            if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
+                return Err(SolDidError::KeySetIncoherence);
             }
         }
-        if found {
-            Ok(())
+        self.keysets_current.push(in_key);
+        self.dirty = true;
+        Ok(true)
+    }
+
+    /// add_key_to_next can add a key into the current keyset if the
+    /// key did not previously exist and the state of keys in
+    /// current are in pre-inception
+    pub fn add_key_to_next(&mut self, in_key: Key) -> SolDidResult<bool> {
+        let (hit, _block) = self.has_key(&in_key.key)?;
+        if hit {
+            return Err(SolDidError::KeysExistError(in_key.key));
         } else {
-            Err(SolDidError::KeyNotFound(key_ref.to_string()))
+            if !(self.keys_state_is(&self.keysets_next)? == KeyState::NextRotation) {
+                return Err(SolDidError::KeySetIncoherence);
+            }
         }
+        self.keysets_current.push(in_key);
+        self.dirty = true;
+        Ok(true)
+    }
+
+    /// inception_event occurs on current keyset being in PreInception
+    pub fn inception_event(&mut self) -> SolDidResult<()> {
+        if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
+            return Err(SolDidError::KeySetIncoherence);
+        }
+        for k in self.keysets_current.iter_mut() {
+            k.set_state(KeyState::Incepted)
+        }
+        Ok(())
+    }
+    /// rotation_event occurs adding new keys for the next rotation
+    /// push the current keyset into the keysets_past
+    /// makes the keysets.next into keysets_current
+    /// sets the inbound keys to keyset_next
+    pub fn rotation_event(&mut self, _new_next_set: Vec<Key>) -> SolDidResult<()> {
+        if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
+            return Err(SolDidError::KeySetIncoherence);
+        }
+        for k in self.keysets_current.iter_mut() {
+            k.set_state(KeyState::Incepted)
+        }
+        Ok(())
     }
 
     /// Read keys for wallet from path
@@ -329,18 +444,16 @@ mod wallet_tests {
         let mut w = init_wallet()?;
         assert!(w.keynames.is_empty());
         let count = 2u8;
+        let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
         // Inception
-        let _icp_event = incept(&kset1, Basic::PASTA, 1u64)?;
-        w.register_keyset(
-            &"Frank".to_string(),
-            &kset1,
-            Basic::PASTA,
-            KeyState::Incepted,
-        )?;
+        let _icp_event = incept(&kset1, Basic::PASTA, threshold)?;
+        let wkeyset =
+            Keys::from_post_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        w.add_keys(wkeyset)?;
         let w = init_wallet()?;
         assert_eq!(w.keynames.len(), 1);
-        // println!("\nWallet loaded \n{:?}", w);
+        println!("\nWallet loaded \n{:?}", w);
         fs::remove_dir_all(w.path.parent().unwrap())?;
         Ok(())
     }
@@ -349,15 +462,13 @@ mod wallet_tests {
         let mut w = init_wallet()?;
         assert!(w.keynames.is_empty());
         let count = 2u8;
+        let threshold = 1u64;
         let kset1 = SolanaKeySet::new_for(count);
         // Inception
-        let _icp_event = incept(&kset1, Basic::ED25519, 1u64)?;
-        w.register_keyset(
-            &"Frank".to_string(),
-            &kset1,
-            Basic::ED25519,
-            KeyState::Incepted,
-        )?;
+        let _icp_event = incept(&kset1, Basic::ED25519, threshold)?;
+        let wkeyset =
+            Keys::from_post_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        w.add_keys(wkeyset)?;
         let w = init_wallet()?;
         assert_eq!(w.keynames.len(), 1);
         // println!("\nWallet loaded \n{:?}", w);

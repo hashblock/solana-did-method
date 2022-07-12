@@ -17,6 +17,8 @@ pub enum SolDidError {
     KeyNotFound(String),
     #[error("Keys {0} already exists")]
     KeysExistError(String),
+    #[error("Keys incoherent")]
+    KeySetIncoherence,
     #[error("Attempting to duplicate key")]
     DuplicateKeyError,
     #[error("Unknown Key Type")]
