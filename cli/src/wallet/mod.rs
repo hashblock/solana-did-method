@@ -6,7 +6,7 @@ use hbkr_rs::{
     basic::Basic,
     event::Event,
     event_message::EventMessage,
-    key_manage::{KeySet, PrivKey},
+    key_manage::{KeySet, PrivKey, Privatekey},
     said_event::SaidEvent,
 };
 
@@ -33,19 +33,6 @@ pub struct Wallet {
 }
 #[allow(dead_code)]
 impl Wallet {
-    /// Add new managed Keys(et) with name
-    fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
-        let check = keysets.name.clone();
-        if self.keynames.contains(&check) {
-            Err(SolDidError::KeysExistError(check))
-        } else {
-            self.keynames.insert(check);
-            self.keys.push(keysets);
-            self.save()?;
-            Ok(())
-        }
-    }
-
     /// Instantiate a wallet for first time
     fn new(loc: PathBuf) -> SolDidResult<Wallet> {
         let _ = match loc.exists() {
@@ -65,6 +52,18 @@ impl Wallet {
         };
         wallet.save()?;
         Ok(wallet)
+    }
+    /// Add new managed Keys(et) with name
+    fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
+        let check = keysets.name.clone();
+        if self.keynames.contains(&check) {
+            Err(SolDidError::KeysExistError(check))
+        } else {
+            self.keynames.insert(check);
+            self.keys.push(keysets);
+            self.save()?;
+            Ok(())
+        }
     }
 
     // Helper function
@@ -126,6 +125,7 @@ pub struct Keys {
     keysets_past: Vec<Key>,
 }
 
+#[derive(Debug, PartialEq)]
 enum KeyBlock {
     NONE,
     CURRENT,
@@ -134,7 +134,7 @@ enum KeyBlock {
 }
 impl Keys {
     /// Accepts a native keyset that is pre-incepted
-    /// distributes current (PreInception) and next NextRotation constructs
+    /// distributes current (PreInception) and next (NextRotation) keys
     pub fn from_pre_incept_set(
         name: &String,
         key_set: &dyn KeySet,
@@ -146,16 +146,17 @@ impl Keys {
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
         };
-        let keysets_current = key_set
-            .current_private_keys()
-            .iter()
-            .map(|k| Key::new(KeyState::PreInception, set_type, &k.as_base58_string()))
-            .collect::<Vec<Key>>();
-        let keysets_next = key_set
-            .next_private_keys()
-            .iter()
-            .map(|k| Key::new(KeyState::NextRotation, set_type, &k.as_base58_string()))
-            .collect::<Vec<Key>>();
+        let keysets_current = Keys::to_keys_from_private(
+            KeyState::PreInception,
+            set_type,
+            &key_set.current_private_keys(),
+        );
+        let keysets_next = Keys::to_keys_from_private(
+            KeyState::NextRotation,
+            set_type,
+            &key_set.next_private_keys(),
+        );
+
         Ok(Keys {
             dirty: true,
             name: name.clone(),
@@ -165,6 +166,9 @@ impl Keys {
             keysets_past: Vec::<Key>::new(),
         })
     }
+
+    /// Accepts a native keyset this has been incepted
+    /// distributes current (Incepted) and next (NextRotation) keys
     pub fn from_post_incept_set(
         name: &String,
         key_set: &dyn KeySet,
@@ -176,16 +180,16 @@ impl Keys {
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
         };
-        let keysets_current = key_set
-            .current_private_keys()
-            .iter()
-            .map(|k| Key::new(KeyState::Incepted, set_type, &k.as_base58_string()))
-            .collect::<Vec<Key>>();
-        let keysets_next = key_set
-            .next_private_keys()
-            .iter()
-            .map(|k| Key::new(KeyState::NextRotation, set_type, &k.as_base58_string()))
-            .collect::<Vec<Key>>();
+        let keysets_current = Keys::to_keys_from_private(
+            KeyState::Incepted,
+            set_type,
+            &key_set.current_private_keys(),
+        );
+        let keysets_next = Keys::to_keys_from_private(
+            KeyState::NextRotation,
+            set_type,
+            &key_set.next_private_keys(),
+        );
         Ok(Keys {
             dirty: true,
             name: name.clone(),
@@ -195,6 +199,15 @@ impl Keys {
             keysets_past: Vec::<Key>::new(),
         })
     }
+
+    /// Generate Keys from Privatekeys
+    fn to_keys_from_private(state: KeyState, ktype: KeyType, pkeys: &Vec<Privatekey>) -> Vec<Key> {
+        pkeys
+            .iter()
+            .map(|pk| Key::new(state, ktype, &pk.as_base58_string()))
+            .collect::<Vec<Key>>()
+    }
+
     /// key_state_is returns the KeyState for
     /// keys in a keyset
     fn keys_state_is(&self, keyset: &Vec<Key>) -> SolDidResult<KeyState> {
@@ -414,6 +427,7 @@ pub fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
 mod wallet_tests {
 
     use hbkr_rs::{basic::Basic, incept};
+    use hbpasta_rs::Keypair as PastaKP;
 
     use crate::pkey_wrap::PastaKeySet;
     use crate::skey_wrap::SolanaKeySet;
@@ -421,7 +435,7 @@ mod wallet_tests {
     use super::*;
 
     #[test]
-    fn base_new_test_pass() -> SolDidResult<()> {
+    fn base_wallet_create_test_pass() -> SolDidResult<()> {
         let w = init_wallet()?;
         assert!(w.keynames.is_empty());
         fs::remove_dir_all(w.path.parent().unwrap())?;
@@ -430,17 +444,45 @@ mod wallet_tests {
 
     #[test]
     fn base_load_existing_pass() -> SolDidResult<()> {
+        let _ = init_wallet()?;
         let w = init_wallet()?;
-        println!("w {:?}", w);
-        let w = init_wallet()?;
-        println!("w {:?}", w);
         assert!(w.keynames.is_empty());
         fs::remove_dir_all(w.path.parent().unwrap())?;
         Ok(())
     }
+    #[test]
+    fn has_keys_test_pass() -> SolDidResult<()> {
+        let count = 2u8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let wkeyset =
+            Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let one_key = kset1
+            .current_private_keys()
+            .first()
+            .unwrap()
+            .as_base58_string();
+        let (found, block) = wkeyset.has_key(&one_key)?;
+        assert!(found);
+        assert_eq!(block, KeyBlock::CURRENT);
+        Ok(())
+    }
 
     #[test]
-    fn add_pasta_keys_test_pass() -> SolDidResult<()> {
+    fn has_keys_test_fail() -> SolDidResult<()> {
+        let count = 2u8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let wkeyset =
+            Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let err_key = PastaKP::new();
+        let res = wkeyset.has_key(&err_key.to_base58_string())?;
+        assert!(!res.0);
+        Ok(())
+    }
+
+    #[test]
+    fn add_incepted_pasta_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.keynames.is_empty());
         let count = 2u8;
@@ -450,15 +492,21 @@ mod wallet_tests {
         let _icp_event = incept(&kset1, Basic::PASTA, threshold)?;
         let wkeyset =
             Keys::from_post_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let one_key = kset1
+            .current_private_keys()
+            .first()
+            .unwrap()
+            .as_base58_string();
+        assert!(wkeyset.has_key(&one_key)?.0);
         w.add_keys(wkeyset)?;
         let w = init_wallet()?;
         assert_eq!(w.keynames.len(), 1);
-        println!("\nWallet loaded \n{:?}", w);
+        // println!("\nWallet loaded \n{:?}", w);
         fs::remove_dir_all(w.path.parent().unwrap())?;
         Ok(())
     }
     #[test]
-    fn add_solana_keys_test_pass() -> SolDidResult<()> {
+    fn add_incepted_solana_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.keynames.is_empty());
         let count = 2u8;
