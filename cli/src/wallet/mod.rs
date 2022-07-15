@@ -146,23 +146,20 @@ impl Keys {
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
         };
-        let keysets_current = Keys::to_keys_from_private(
-            KeyState::PreInception,
-            set_type,
-            &key_set.current_private_keys(),
-        );
-        let keysets_next = Keys::to_keys_from_private(
-            KeyState::NextRotation,
-            set_type,
-            &key_set.next_private_keys(),
-        );
-
         Ok(Keys {
             dirty: true,
             name: name.clone(),
             threshold,
-            keysets_current,
-            keysets_next,
+            keysets_current: Keys::to_keys_from_private(
+                KeyState::PreInception,
+                set_type,
+                &key_set.current_private_keys(),
+            ),
+            keysets_next: Keys::to_keys_from_private(
+                KeyState::NextRotation,
+                set_type,
+                &key_set.next_private_keys(),
+            ),
             keysets_past: Vec::<Key>::new(),
         })
     }
@@ -180,22 +177,20 @@ impl Keys {
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
         };
-        let keysets_current = Keys::to_keys_from_private(
-            KeyState::Incepted,
-            set_type,
-            &key_set.current_private_keys(),
-        );
-        let keysets_next = Keys::to_keys_from_private(
-            KeyState::NextRotation,
-            set_type,
-            &key_set.next_private_keys(),
-        );
         Ok(Keys {
             dirty: true,
             name: name.clone(),
             threshold,
-            keysets_current,
-            keysets_next,
+            keysets_current: Keys::to_keys_from_private(
+                KeyState::Incepted,
+                set_type,
+                &key_set.current_private_keys(),
+            ),
+            keysets_next: Keys::to_keys_from_private(
+                KeyState::NextRotation,
+                set_type,
+                &key_set.next_private_keys(),
+            ),
             keysets_past: Vec::<Key>::new(),
         })
     }
@@ -221,97 +216,87 @@ impl Keys {
             Ok(KeyState::PreInception)
         } else {
             let vres = res.into_iter().collect::<Vec<_>>();
-            let vres_first = vres.first().unwrap().clone();
-            Ok(vres_first)
+            Ok(vres.first().unwrap().clone())
         }
     }
 
-    fn has_key(&self, key_string: &String) -> SolDidResult<(bool, KeyBlock)> {
-        let mut hit = false;
-        let mut block = KeyBlock::NONE;
+    /// Checks current, next and past to see if key_string
+    /// already exists
+    fn has_key(&self, key_string: &String) -> (bool, KeyBlock) {
         // Check current
-        self.keysets_current.iter().for_each(|n| {
+        for n in &self.keysets_current {
             if key_string == &n.key {
-                hit = true;
-                block = KeyBlock::CURRENT;
+                return (true, KeyBlock::CURRENT);
             }
-        });
+        }
         // Check next
-        if !hit {
-            self.keysets_next.iter().for_each(|n| {
-                if key_string == &n.key {
-                    hit = true;
-                    block = KeyBlock::NEXT;
-                }
-            })
-        };
-        // Check remaining
-        if !hit {
-            self.keysets_past.iter().for_each(|n| {
-                if key_string == &n.key {
-                    hit = true;
-                    block = KeyBlock::PAST;
-                }
-            })
-        };
-        Ok((hit, block))
-    }
-
-    /// add_key_to_current can add a key into the current keyset if the
-    /// key did not previously exist and the state of keys in
-    /// current are in pre-inception
-    pub fn add_key_to_current(&mut self, in_key: Key) -> SolDidResult<bool> {
-        let (hit, _block) = self.has_key(&in_key.key)?;
-        if hit {
-            return Err(SolDidError::KeysExistError(in_key.key));
-        } else {
-            if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
-                return Err(SolDidError::KeySetIncoherence);
+        for n in &self.keysets_next {
+            if key_string == &n.key {
+                return (true, KeyBlock::NEXT);
             }
         }
-        self.keysets_current.push(in_key);
-        self.dirty = true;
-        Ok(true)
-    }
-
-    /// add_key_to_next can add a key into the current keyset if the
-    /// key did not previously exist and the state of keys in
-    /// current are in pre-inception
-    pub fn add_key_to_next(&mut self, in_key: Key) -> SolDidResult<bool> {
-        let (hit, _block) = self.has_key(&in_key.key)?;
-        if hit {
-            return Err(SolDidError::KeysExistError(in_key.key));
-        } else {
-            if !(self.keys_state_is(&self.keysets_next)? == KeyState::NextRotation) {
-                return Err(SolDidError::KeySetIncoherence);
+        // Check past
+        for n in &self.keysets_past {
+            if key_string == &n.key {
+                return (true, KeyBlock::PAST);
             }
         }
-        self.keysets_current.push(in_key);
-        self.dirty = true;
-        Ok(true)
+        (false, KeyBlock::NONE)
     }
 
     /// inception_event occurs on current keyset being in PreInception
     pub fn inception_event(&mut self) -> SolDidResult<()> {
+        // Fail when current keyset is not in PreInception
         if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
             return Err(SolDidError::KeySetIncoherence);
         }
+        // Mark current keys as Incepted
         for k in self.keysets_current.iter_mut() {
             k.set_state(KeyState::Incepted)
         }
+        self.dirty = true;
         Ok(())
     }
+
     /// rotation_event occurs adding new keys for the next rotation
     /// push the current keyset into the keysets_past
     /// makes the keysets.next into keysets_current
     /// sets the inbound keys to keyset_next
-    pub fn rotation_event(&mut self, _new_next_set: Vec<Key>) -> SolDidResult<()> {
-        if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
-            return Err(SolDidError::KeySetIncoherence);
-        }
+    pub fn rotation_event(
+        &mut self,
+        key_type: Basic,
+        new_next_set: Vec<String>,
+    ) -> SolDidResult<()> {
+        let _ = match self.keys_state_is(&self.keysets_current)? {
+            KeyState::PreInception
+            | KeyState::Revoked
+            | KeyState::RotatedOut
+            | KeyState::NextRotation => return Err(SolDidError::KeySetIncoherence),
+            _ => true,
+        };
+        let set_type = match key_type {
+            Basic::ED25519 => KeyType::ED25519,
+            Basic::PASTA => KeyType::PASTA,
+            // _ => return Err(SolDidError::UnknownKeyTypeError),
+        };
+        // Move current to past
         for k in self.keysets_current.iter_mut() {
-            k.set_state(KeyState::Incepted)
+            self.keysets_past
+                .push(Key::new(KeyState::RotatedOut, k.key_type, &k.key))
         }
+        // Move next to current
+        self.keysets_current.drain(..);
+        for k in self.keysets_next.iter() {
+            self.keysets_current
+                .push(Key::new(KeyState::Rotated, k.key_type, &k.key))
+        }
+        // New next keyset
+        self.keysets_next.drain(..);
+        for k in new_next_set.iter() {
+            self.keysets_next
+                .push(Key::new(KeyState::NextRotation, set_type, k))
+        }
+        self.dirty = true;
         Ok(())
     }
 
@@ -462,7 +447,7 @@ mod wallet_tests {
             .first()
             .unwrap()
             .as_base58_string();
-        let (found, block) = wkeyset.has_key(&one_key)?;
+        let (found, block) = wkeyset.has_key(&one_key);
         assert!(found);
         assert_eq!(block, KeyBlock::CURRENT);
         Ok(())
@@ -476,11 +461,57 @@ mod wallet_tests {
         let wkeyset =
             Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
         let err_key = PastaKP::new();
-        let res = wkeyset.has_key(&err_key.to_base58_string())?;
+        let res = wkeyset.has_key(&err_key.to_base58_string());
         assert!(!res.0);
         Ok(())
     }
 
+    #[test]
+    fn inception_event_pass() -> SolDidResult<()> {
+        let count = 2u8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let mut wkeyset =
+            Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        assert_eq!(
+            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+            KeyState::PreInception
+        );
+        wkeyset.inception_event()?;
+        assert_eq!(
+            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+            KeyState::Incepted
+        );
+        Ok(())
+    }
+    #[test]
+    fn rotation_event_pass() -> SolDidResult<()> {
+        let count = 2u8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let mut wkeyset =
+            Keys::from_post_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        assert_eq!(
+            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+            KeyState::Incepted
+        );
+        let kset2 = PastaKeySet::new_for(count);
+        let pkeys = kset2
+            .current_private_keys()
+            .iter()
+            .map(|s| s.as_base58_string())
+            .collect::<Vec<String>>();
+        wkeyset.rotation_event(Basic::PASTA, pkeys)?;
+        assert_eq!(
+            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+            KeyState::Rotated
+        );
+        assert_eq!(
+            wkeyset.keys_state_is(&wkeyset.keysets_next)?,
+            KeyState::NextRotation
+        );
+        Ok(())
+    }
     #[test]
     fn add_incepted_pasta_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
@@ -497,7 +528,7 @@ mod wallet_tests {
             .first()
             .unwrap()
             .as_base58_string();
-        assert!(wkeyset.has_key(&one_key)?.0);
+        assert!(wkeyset.has_key(&one_key).0);
         w.add_keys(wkeyset)?;
         let w = init_wallet()?;
         assert_eq!(w.keynames.len(), 1);
