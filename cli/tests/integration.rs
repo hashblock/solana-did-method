@@ -3,7 +3,7 @@ mod tests {
     use cli::{
         errors::SolDidResult, pkey_wrap::PastaKeySet, skey_wrap::SolanaKeySet, wallet::to_json,
     };
-    use hbkr_rs::{basic::Basic, incept, rotate};
+    use hbkr_rs::{inception, rotation, Prefix};
 
     #[test]
     fn test_basic_with_pasta_pass() -> SolDidResult<()> {
@@ -12,14 +12,22 @@ mod tests {
         let mut kset1 = PastaKeySet::new_for(count);
         println!("Key Set\n{:?}\n", kset1);
         // Inception
-        let icp_event = incept(&kset1, Basic::PASTA, 1u64)?;
-        // println!("{:?}\n", icp_event);
+        let icp_event = inception(&kset1, 1u64)?;
         to_json("Icp-0 JSON", &icp_event);
+        let pfx = icp_event.event.get_prefix().to_str();
+        let pre_dig = icp_event.get_digest().to_str();
+        let pre_sn = icp_event.event.get_sn();
+        println!("\n");
+        println!("Prefix {:?}", pfx);
+        println!("Digest {:?}", pre_dig);
         println!("\n");
 
         // Rotate the keys
-        let rot1_event = rotate(&icp_event, &mut kset1, Basic::PASTA, 1u64)?;
+        let rot1_event = rotation(&pfx, &pre_dig, pre_sn, &mut kset1, 1u64)?;
         to_json("Rot-1 JSON", &rot1_event);
+        println!("\n");
+        println!("Prefix {:?}", rot1_event.event.get_prefix().to_str());
+        println!("Digest {:?}", rot1_event.get_digest().to_str());
         println!("\n");
         Ok(())
     }
@@ -29,17 +37,26 @@ mod tests {
         //  Keys 1
         let count = 2u8;
         let mut kset1 = SolanaKeySet::new_for(count);
-        // println!("Key Set\n{:?}\n", kset1);
         // Inception
-        let icp_event = incept(&kset1, Basic::ED25519, 1u64)?;
+        let icp_event = inception(&kset1, 1u64)?;
         // println!("{:?}\n", icp_event);
         to_json("Icp-0 JSON", &icp_event);
+        let pfx = icp_event.event.get_prefix().to_str();
+        let pre_dig = icp_event.get_digest().to_str();
+        let pre_sn = icp_event.event.get_sn();
+        println!("\n");
+        println!("Prefix {:?}", pfx);
+        println!("Digest {:?}", pre_dig);
         println!("\n");
 
         // Rotate the keys
-        let rot1_event = rotate(&icp_event, &mut kset1, Basic::ED25519, 1u64)?;
+        let rot1_event = rotation(&pfx, &pre_dig, pre_sn, &mut kset1, 1u64)?;
         to_json("Rot-1 JSON", &rot1_event);
         println!("\n");
+        println!("Prefix {:?}", rot1_event.event.get_prefix().to_str());
+        println!("Digest {:?}", rot1_event.get_digest().to_str());
+        println!("\n");
+
         Ok(())
     }
 

@@ -6,8 +6,10 @@ use hbkr_rs::{
     basic::Basic,
     event::Event,
     event_message::EventMessage,
+    inception,
     key_manage::{KeySet, PrivKey, Privatekey},
     said_event::SaidEvent,
+    Prefix,
 };
 
 use std::{
@@ -20,6 +22,16 @@ use std::{
 static DEFAULT_WALLET_PATH: &str = "/.solwall";
 static WALLET_CONFIGURATION: &str = "wallet.bor";
 static KEYS_CONFIGURATION: &str = "keys.bor";
+
+/// ChainEven tracks/associates keys to a confirmed signature chain event
+/// Signatures are base58 representation
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Default)]
+pub struct ChainEvent {
+    pub chain_signature: String,
+    pub km_sn: u64,
+    pub km_digest: String,
+    pub keysets: HashMap<KeyBlock, Vec<Key>>,
+}
 
 #[derive(Debug, BorshDeserialize, BorshSerialize)]
 pub struct Wallet {
@@ -55,7 +67,7 @@ impl Wallet {
     }
     /// Add new managed Keys(et) with name
     fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
-        let check = keysets.name.clone();
+        let check = keysets.prefix.clone();
         if self.prefixes.contains(&check) {
             Err(SolDidError::KeysExistError(check))
         } else {
@@ -69,6 +81,18 @@ impl Wallet {
     /// Incepts a new keyset
     pub fn incept_keys(&mut self, keyset: &dyn KeySet, threshold: u64) -> SolDidResult<()> {
         // Create a pre-inception keyset
+        let icp_event = inception(keyset, threshold)?;
+        let prefix = icp_event.event.get_prefix().to_str();
+        // TODO: Send to chain
+        let keys = Keys::from_inception(
+            icp_event,
+            "sol_did_signature".to_string(),
+            keyset,
+            threshold,
+        )?;
+        self.prefixes.insert(prefix);
+        self.keys.push(keys);
+        self.save()?;
         Ok(())
     }
     /// Rotate an existing keyset
@@ -155,7 +179,7 @@ pub fn load_wallet_from(_location: &Path) {}
 pub struct Keys {
     #[borsh_skip]
     dirty: bool,
-    name: String,
+    prefix: String,
     threshold: u64,
     keysets_current: Vec<Key>,
     keysets_next: Vec<Key>,
@@ -172,50 +196,13 @@ pub enum KeyBlock {
     PAST,
 }
 
-/// ChainEven tracks/associates keys to a confirmed signature chain event
-/// Signatures are base58 representation
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Default)]
-pub struct ChainEvent {
-    pub chain_signature: String,
-    pub keysets: HashMap<KeyBlock, Key>,
-}
-
 impl Keys {
-    /// Accepts a native keyset that is pre-incepted
-    /// distributes current (PreInception) and next (NextRotation) keys
-    pub fn from_pre_incept_set(
-        name: &String,
-        key_set: &dyn KeySet,
-        threshold: u64,
-    ) -> SolDidResult<Self> {
-        let set_type = match key_set.key_type() {
-            Basic::ED25519 => KeyType::ED25519,
-            Basic::PASTA => KeyType::PASTA,
-            // _ => return Err(SolDidError::UnknownKeyTypeError),
-        };
-        Ok(Keys {
-            dirty: true,
-            name: name.clone(),
-            threshold,
-            keysets_current: Keys::to_keys_from_private(
-                KeyState::PreInception,
-                set_type,
-                &key_set.current_private_keys(),
-            ),
-            keysets_next: Keys::to_keys_from_private(
-                KeyState::NextRotation,
-                set_type,
-                &key_set.next_private_keys(),
-            ),
-            keysets_past: Vec::<Key>::new(),
-            chain_events: Vec::<ChainEvent>::new(),
-        })
-    }
-
     /// Accepts a native keyset this has been incepted
     /// distributes current (Incepted) and next (NextRotation) keys
-    pub fn from_post_incept_set(
-        name: &String,
+    /// and stores the chain event initiating this function call
+    fn from_inception(
+        icp_event: EventMessage<SaidEvent<Event>>,
+        sol_did_signature: String,
         key_set: &dyn KeySet,
         threshold: u64,
     ) -> SolDidResult<Self> {
@@ -224,22 +211,42 @@ impl Keys {
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
         };
+        // Setup the chain event
+        let mut chain_event = ChainEvent::default();
+        let prefix = icp_event.event.get_prefix().to_str();
+        chain_event.km_sn = icp_event.event.get_sn();
+        chain_event.km_digest = icp_event.get_digest().to_str();
+        chain_event.chain_signature = sol_did_signature;
+        // Setup the keys
+        let keysets_current = Keys::to_keys_from_private(
+            KeyState::Incepted,
+            set_type,
+            &key_set.current_private_keys(),
+        );
+        let keysets_next = Keys::to_keys_from_private(
+            KeyState::NextRotation,
+            set_type,
+            &key_set.next_private_keys(),
+        );
+        // Duplicate into chain_event
+        chain_event
+            .keysets
+            .insert(KeyBlock::CURRENT, keysets_current.clone());
+        chain_event
+            .keysets
+            .insert(KeyBlock::NEXT, keysets_next.clone());
+        // Create a event store and push chain_event
+        let mut chain_vec = Vec::<ChainEvent>::new();
+        chain_vec.push(chain_event);
+        // Return Self
         Ok(Keys {
             dirty: true,
-            name: name.clone(),
+            prefix,
             threshold,
-            keysets_current: Keys::to_keys_from_private(
-                KeyState::Incepted,
-                set_type,
-                &key_set.current_private_keys(),
-            ),
-            keysets_next: Keys::to_keys_from_private(
-                KeyState::NextRotation,
-                set_type,
-                &key_set.next_private_keys(),
-            ),
+            keysets_current,
+            keysets_next,
             keysets_past: Vec::<Key>::new(),
-            chain_events: Vec::<ChainEvent>::new(),
+            chain_events: chain_vec,
         })
     }
 
@@ -292,69 +299,48 @@ impl Keys {
         (false, KeyBlock::NONE)
     }
 
-    /// inception_event occurs on current keyset being in PreInception
-    pub fn inception_event(&mut self) -> SolDidResult<()> {
-        // Fail when current keyset is not in PreInception
-        if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
-            return Err(SolDidError::KeySetIncoherence);
-        }
-        // TODO: Execute inception transaction on chain
-        // TODO: Check for success
-        // Build a ChainEvent
-        let mut _chain_event = ChainEvent::default();
-
-        // Mark current keys as Incepted
-        for k in self.keysets_current.iter_mut() {
-            k.set_state(KeyState::Incepted)
-        }
-        // TODO: Copy the involved keys in the ChainEvent
-        // TODO: Update (push) the keys ChainEvents
-        self.dirty = true;
-        Ok(())
-    }
-
-    /// rotation_event occurs adding new keys for the next rotation
-    /// push the current keyset into the keysets_past
-    /// makes the keysets.next into keysets_current
-    /// sets the inbound keys to keyset_next
-    pub fn rotation_event(
-        &mut self,
-        key_type: Basic,
-        new_next_set: Vec<String>,
-    ) -> SolDidResult<()> {
-        let _ = match self.keys_state_is(&self.keysets_current)? {
-            KeyState::PreInception
-            | KeyState::Revoked
-            | KeyState::RotatedOut
-            | KeyState::NextRotation => return Err(SolDidError::KeySetIncoherence),
-            _ => true,
-        };
-        let set_type = match key_type {
-            Basic::ED25519 => KeyType::ED25519,
-            Basic::PASTA => KeyType::PASTA,
-            // _ => return Err(SolDidError::UnknownKeyTypeError),
-        };
-        let mut _chain_event = ChainEvent::default();
-        // Move current to past
-        for k in self.keysets_current.iter_mut() {
-            self.keysets_past
-                .push(Key::new(KeyState::RotatedOut, k.key_type, &k.key))
-        }
-        // Move next to current
-        self.keysets_current.drain(..);
-        for k in self.keysets_next.iter() {
-            self.keysets_current
-                .push(Key::new(KeyState::Rotated, k.key_type, &k.key))
-        }
-        // New next keyset
-        self.keysets_next.drain(..);
-        for k in new_next_set.iter() {
-            self.keysets_next
-                .push(Key::new(KeyState::NextRotation, set_type, k))
-        }
-        self.dirty = true;
-        Ok(())
-    }
+    // /// rotation_event occurs adding new keys for the next rotation
+    // /// push the current keyset into the keysets_past
+    // /// makes the keysets.next into keysets_current
+    // /// sets the inbound keys to keyset_next
+    // pub fn rotation_event(
+    //     &mut self,
+    //     key_type: Basic,
+    //     new_next_set: Vec<String>,
+    // ) -> SolDidResult<()> {
+    //     let _ = match self.keys_state_is(&self.keysets_current)? {
+    //         KeyState::PreInception
+    //         | KeyState::Revoked
+    //         | KeyState::RotatedOut
+    //         | KeyState::NextRotation => return Err(SolDidError::KeySetIncoherence),
+    //         _ => true,
+    //     };
+    //     let set_type = match key_type {
+    //         Basic::ED25519 => KeyType::ED25519,
+    //         Basic::PASTA => KeyType::PASTA,
+    //         // _ => return Err(SolDidError::UnknownKeyTypeError),
+    //     };
+    //     let mut _chain_event = ChainEvent::default();
+    //     // Move current to past
+    //     for k in self.keysets_current.iter_mut() {
+    //         self.keysets_past
+    //             .push(Key::new(KeyState::RotatedOut, k.key_type, &k.key))
+    //     }
+    //     // Move next to current
+    //     self.keysets_current.drain(..);
+    //     for k in self.keysets_next.iter() {
+    //         self.keysets_current
+    //             .push(Key::new(KeyState::Rotated, k.key_type, &k.key))
+    //     }
+    //     // New next keyset
+    //     self.keysets_next.drain(..);
+    //     for k in new_next_set.iter() {
+    //         self.keysets_next
+    //             .push(Key::new(KeyState::NextRotation, set_type, k))
+    //     }
+    //     self.dirty = true;
+    //     Ok(())
+    // }
 
     /// Read keys for wallet from path
     fn load(loc: &mut PathBuf) -> SolDidResult<Keys> {
@@ -377,7 +363,7 @@ impl Keys {
     /// Write keys to location
     fn write(&mut self, loc: &PathBuf) -> SolDidResult<()> {
         let mut rpath = loc.clone();
-        rpath.push(self.name.to_string());
+        rpath.push(self.prefix.to_string());
         // If path does not exist, create
         if !rpath.exists() {
             fs::create_dir(rpath.clone())?;
@@ -397,8 +383,8 @@ impl Keys {
 
         Ok(())
     }
-    pub fn name(&self) -> &String {
-        &self.name
+    pub fn prefix(&self) -> &String {
+        &self.prefix
     }
 }
 
@@ -473,119 +459,149 @@ mod wallet_tests {
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
-    #[test]
-    fn has_keys_test_pass() -> SolDidResult<()> {
-        let count = 2u8;
-        let threshold = 1u64;
-        let kset1 = PastaKeySet::new_for(count);
-        let wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
-        let one_key = kset1
-            .current_private_keys()
-            .first()
-            .unwrap()
-            .as_base58_string();
-        let (found, block) = wkeyset.has_key(&one_key);
-        assert!(found);
-        assert_eq!(block, KeyBlock::CURRENT);
-        Ok(())
-    }
 
     #[test]
-    fn has_keys_test_fail() -> SolDidResult<()> {
-        let count = 2u8;
-        let threshold = 1u64;
-        let kset1 = PastaKeySet::new_for(count);
-        let wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
-        let err_key = PastaKP::new();
-        let res = wkeyset.has_key(&err_key.to_base58_string());
-        assert!(!res.0);
-        Ok(())
-    }
-
-    #[test]
-    fn inception_event_pass() -> SolDidResult<()> {
-        let count = 2u8;
-        let threshold = 1u64;
-        let kset1 = PastaKeySet::new_for(count);
-        let mut wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
-        assert_eq!(
-            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
-            KeyState::PreInception
-        );
-
-        wkeyset.inception_event()?;
-        assert_eq!(
-            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
-            KeyState::Incepted,
-        );
-        Ok(())
-    }
-    #[test]
-    fn rotation_event_pass() -> SolDidResult<()> {
-        let count = 2u8;
-        let threshold = 1u64;
-        let kset1 = PastaKeySet::new_for(count);
-        let mut wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
-        assert_eq!(
-            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
-            KeyState::Incepted
-        );
-        let kset2 = PastaKeySet::new_for(count);
-        let pkeys = kset2
-            .current_private_keys()
-            .iter()
-            .map(|s| s.as_base58_string())
-            .collect::<Vec<String>>();
-
-        wkeyset.rotation_event(Basic::PASTA, pkeys)?;
-        assert_eq!(
-            wkeyset.keys_state_is(&wkeyset.keysets_current)?,
-            KeyState::Rotated
-        );
-        assert_eq!(
-            wkeyset.keys_state_is(&wkeyset.keysets_next)?,
-            KeyState::NextRotation
-        );
-        Ok(())
-    }
-    #[test]
-    fn add_incepted_pasta_keys_test_pass() -> SolDidResult<()> {
+    fn inception_pasta_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        // Inception
-        let _icp_event = incept(&kset1, Basic::PASTA, threshold)?;
-        let wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
-        let one_key = kset1
-            .current_private_keys()
-            .first()
-            .unwrap()
-            .as_base58_string();
-        assert!(wkeyset.has_key(&one_key).0);
-        w.add_keys(wkeyset)?;
+        w.incept_keys(&kset1, threshold)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
-        // println!("\nWallet loaded \n{:?}", w);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
     #[test]
-    fn add_incepted_solana_keys_test_pass() -> SolDidResult<()> {
+    fn inception_solana_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = SolanaKeySet::new_for(count);
-        // Inception
-        let _icp_event = incept(&kset1, Basic::ED25519, threshold)?;
-        let wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
-        w.add_keys(wkeyset)?;
+        w.incept_keys(&kset1, threshold)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
-        // println!("\nWallet loaded \n{:?}", w);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
+
+    // #[test]
+    // fn has_keys_test_pass() -> SolDidResult<()> {
+    //     let count = 2u8;
+    //     let threshold = 1u64;
+    //     let kset1 = PastaKeySet::new_for(count);
+    //     let wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
+    //     let one_key = kset1
+    //         .current_private_keys()
+    //         .first()
+    //         .unwrap()
+    //         .as_base58_string();
+    //     let (found, block) = wkeyset.has_key(&one_key);
+    //     assert!(found);
+    //     assert_eq!(block, KeyBlock::CURRENT);
+    //     Ok(())
+    // }
+
+    // #[test]
+    // fn has_keys_test_fail() -> SolDidResult<()> {
+    //     let count = 2u8;
+    //     let threshold = 1u64;
+    //     let kset1 = PastaKeySet::new_for(count);
+    //     let wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
+    //     let err_key = PastaKP::new();
+    //     let res = wkeyset.has_key(&err_key.to_base58_string());
+    //     assert!(!res.0);
+    //     Ok(())
+    // }
+
+    // // #[test]
+    // // fn inception_event_pass() -> SolDidResult<()> {
+    // //     let count = 2u8;
+    // //     let threshold = 1u64;
+    // //     let kset1 = PastaKeySet::new_for(count);
+    // //     let mut wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
+    // //     assert_eq!(
+    // //         wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+    // //         KeyState::PreInception
+    // //     );
+
+    // //     wkeyset.inception_event()?;
+    // //     assert_eq!(
+    // //         wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+    // //         KeyState::Incepted,
+    // //     );
+    // //     Ok(())
+    // // }
+    // #[test]
+    // fn rotation_event_pass() -> SolDidResult<()> {
+    //     let count = 2u8;
+    //     let threshold = 1u64;
+    //     let kset1 = PastaKeySet::new_for(count);
+    //     let mut wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
+    //     assert_eq!(
+    //         wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+    //         KeyState::Incepted
+    //     );
+    //     let kset2 = PastaKeySet::new_for(count);
+    //     let pkeys = kset2
+    //         .current_private_keys()
+    //         .iter()
+    //         .map(|s| s.as_base58_string())
+    //         .collect::<Vec<String>>();
+
+    //     wkeyset.rotation_event(Basic::PASTA, pkeys)?;
+    //     assert_eq!(
+    //         wkeyset.keys_state_is(&wkeyset.keysets_current)?,
+    //         KeyState::Rotated
+    //     );
+    //     assert_eq!(
+    //         wkeyset.keys_state_is(&wkeyset.keysets_next)?,
+    //         KeyState::NextRotation
+    //     );
+    //     Ok(())
+    // }
+
+    // #[test]
+    // fn add_incepted_pasta_keys_test_pass() -> SolDidResult<()> {
+    //     let mut w = init_wallet()?;
+    //     assert!(w.prefixes.is_empty());
+    //     let count = 2u8;
+    //     let threshold = 1u64;
+    //     let kset1 = PastaKeySet::new_for(count);
+    //     // Inception
+    //     let _icp_event = incept(&kset1, Basic::PASTA, threshold)?;
+    //     let wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
+    //     let one_key = kset1
+    //         .current_private_keys()
+    //         .first()
+    //         .unwrap()
+    //         .as_base58_string();
+    //     assert!(wkeyset.has_key(&one_key).0);
+    //     w.add_keys(wkeyset)?;
+    //     let w = init_wallet()?;
+    //     assert_eq!(w.prefixes.len(), 1);
+    //     // println!("\nWallet loaded \n{:?}", w);
+    //     fs::remove_dir_all(w.full_path.parent().unwrap())?;
+    //     Ok(())
+    // }
+
+    // #[test]
+    // fn add_incepted_solana_keys_test_pass() -> SolDidResult<()> {
+    //     let mut w = init_wallet()?;
+    //     assert!(w.prefixes.is_empty());
+    //     let count = 2u8;
+    //     let threshold = 1u64;
+    //     let kset1 = SolanaKeySet::new_for(count);
+    //     // Inception
+    //     let _icp_event = incept(&kset1, Basic::ED25519, threshold)?;
+    //     let wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
+    //     w.add_keys(wkeyset)?;
+    //     let w = init_wallet()?;
+    //     assert_eq!(w.prefixes.len(), 1);
+    //     // println!("\nWallet loaded \n{:?}", w);
+    //     fs::remove_dir_all(w.full_path.parent().unwrap())?;
+    //     Ok(())
+    // }
 }
