@@ -1,6 +1,9 @@
 //! Wallet for local file management
 
-use crate::errors::{SolDidError, SolDidResult};
+use crate::{
+    chain_trait::Chain,
+    errors::{SolDidError, SolDidResult},
+};
 use borsh::{BorshDeserialize, BorshSerialize};
 use hbkr_rs::{
     basic::Basic,
@@ -27,7 +30,7 @@ static KEYS_CONFIGURATION: &str = "keys.bor";
 /// Signatures are base58 representation
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Default)]
 pub struct ChainEvent {
-    pub chain_signature: String,
+    pub did_signature: String,
     pub km_sn: u64,
     pub km_digest: String,
     pub keysets: HashMap<KeyBlock, Vec<Key>>,
@@ -79,17 +82,21 @@ impl Wallet {
     }
 
     /// Incepts a new keyset
-    pub fn incept_keys(&mut self, keyset: &dyn KeySet, threshold: u64) -> SolDidResult<()> {
+    pub fn incept_keys(
+        &mut self,
+        keyset: &dyn KeySet,
+        threshold: u64,
+        chain: Option<&dyn Chain>,
+    ) -> SolDidResult<()> {
         // Create a pre-inception keyset
         let icp_event = inception(keyset, threshold)?;
         let prefix = icp_event.event.get_prefix().to_str();
         // TODO: Send to chain
-        let keys = Keys::from_inception(
-            icp_event,
-            "sol_did_signature".to_string(),
-            keyset,
-            threshold,
-        )?;
+        let signature = match chain {
+            Some(chain) => chain.inception_inst(&icp_event)?,
+            None => "sol_did_signature".to_string(),
+        };
+        let keys = Keys::from_inception(icp_event, signature, keyset, threshold)?;
         self.prefixes.insert(prefix);
         self.keys.push(keys);
         self.save()?;
@@ -171,7 +178,11 @@ pub fn init_wallet() -> SolDidResult<Wallet> {
 }
 
 /// Load wallet from path
-pub fn load_wallet_from(_location: &Path) {}
+pub fn load_wallet_from(location: &PathBuf) -> SolDidResult<Wallet> {
+    let mut wallet_path = location.clone();
+    wallet_path.push(WALLET_CONFIGURATION);
+    Wallet::read_from_file(wallet_path.to_path_buf())
+}
 
 /// Keys define a named collection of public and private keys
 /// represented as strings
@@ -202,7 +213,7 @@ impl Keys {
     /// and stores the chain event initiating this function call
     fn from_inception(
         icp_event: EventMessage<SaidEvent<Event>>,
-        sol_did_signature: String,
+        did_signature: String,
         key_set: &dyn KeySet,
         threshold: u64,
     ) -> SolDidResult<Self> {
@@ -216,7 +227,7 @@ impl Keys {
         let prefix = icp_event.event.get_prefix().to_str();
         chain_event.km_sn = icp_event.event.get_sn();
         chain_event.km_digest = icp_event.get_digest().to_str();
-        chain_event.chain_signature = sol_did_signature;
+        chain_event.did_signature = did_signature;
         // Setup the keys
         let keysets_current = Keys::to_keys_from_private(
             KeyState::Incepted,
@@ -435,11 +446,8 @@ pub fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
 #[cfg(test)]
 mod wallet_tests {
 
-    use hbkr_rs::{basic::Basic, incept};
-    use hbpasta_rs::Keypair as PastaKP;
-
     use crate::pkey_wrap::PastaKeySet;
-    use crate::skey_wrap::SolanaKeySet;
+    use crate::solana_wrap::skey_wrap::SolanaKeySet;
 
     use super::*;
 
@@ -467,7 +475,7 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        w.incept_keys(&kset1, threshold)?;
+        w.incept_keys(&kset1, threshold, None)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
@@ -480,7 +488,7 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = SolanaKeySet::new_for(count);
-        w.incept_keys(&kset1, threshold)?;
+        w.incept_keys(&kset1, threshold, None)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;

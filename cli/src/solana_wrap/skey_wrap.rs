@@ -1,5 +1,4 @@
-//! Solana key wrap
-
+//! Solana Keys Wrapper
 use hbkr_rs::{
     basic::Basic,
     key_manage::{KeySet, Privatekey, Publickey},

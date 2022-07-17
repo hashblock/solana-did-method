@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use cli::{
-        errors::SolDidResult, pkey_wrap::PastaKeySet, skey_wrap::SolanaKeySet, wallet::to_json,
+        errors::SolDidResult, pkey_wrap::PastaKeySet, solana_wrap::skey_wrap::SolanaKeySet,
+        wallet::to_json,
     };
     use hbkr_rs::{inception, rotation, Prefix};
 
