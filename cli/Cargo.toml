@@ -19,7 +19,7 @@ hbpasta-rs ="0.1.0"
 hbkr-rs ="0.3.0"
 # hbkr-rs ={version="0.3.0", path="../../hbkr-rs"}
 # end hbkr
-
+semver = "1.0.12"
 serde_json = "1.0.81"
 solana-client = "1.10.28"
 solana-cli-config = "1.10.28"

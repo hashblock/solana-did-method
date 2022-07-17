@@ -729,6 +729,7 @@ dependencies = [
  "ed25519-dalek",
  "hbkr-rs",
  "hbpasta-rs",
+ "semver 1.0.12",
  "serde_json",
  "solana-cli-config",
  "solana-client",
@@ -3613,7 +3614,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
 dependencies = [
- "semver 1.0.6",
+ "semver 1.0.12",
 ]
 
 [[package]]
@@ -3782,9 +3783,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.6"
+version = "1.0.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a4a3381e03edd24287172047536f20cabde766e2cd3e65e6b00fb3af51c4f38d"
+checksum = "a2333e6df6d6598f2b1974829f853c2b4c5f4a6e503c10af918081aa6f8564e1"
 
 [[package]]
 name = "semver-parser"
@@ -4275,7 +4276,7 @@ dependencies = [
  "console",
  "humantime",
  "indicatif",
- "semver 1.0.6",
+ "semver 1.0.12",
  "serde",
  "serde_json",
  "solana-account-decoder",
@@ -4319,7 +4320,7 @@ dependencies = [
  "rayon",
  "reqwest",
  "rustls 0.20.4",
- "semver 1.0.6",
+ "semver 1.0.12",
  "serde",
  "serde_derive",
  "serde_json",
@@ -4879,7 +4880,7 @@ dependencies = [
  "num-traits",
  "parking_lot 0.12.0",
  "qstring",
- "semver 1.0.6",
+ "semver 1.0.12",
  "solana-sdk",
  "thiserror",
  "uriparse",
@@ -5272,7 +5273,7 @@ checksum = "7d3340187183a6c4b0c4c0897e62a8e424bea263b72368adf4a0fc49b02dc199"
 dependencies = [
  "log",
  "rustc_version 0.4.0",
- "semver 1.0.6",
+ "semver 1.0.12",
  "serde",
  "serde_derive",
  "solana-frozen-abi",
