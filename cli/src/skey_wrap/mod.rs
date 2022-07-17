@@ -1,10 +1,14 @@
 //! Solana key wrap
 
-use hbkr_rs::key_manage::{KeySet, Privatekey, Publickey};
+use hbkr_rs::{
+    basic::Basic,
+    key_manage::{KeySet, Privatekey, Publickey},
+};
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 #[derive(Debug)]
 pub struct SolanaKeySet {
+    keytype: Basic,
     current: Vec<Keypair>,
     next: Vec<Keypair>,
 }
@@ -30,7 +34,11 @@ impl SolanaKeySet {
             current.push(Keypair::new());
             next.push(Keypair::new());
         }
-        Self { current, next }
+        Self {
+            current,
+            next,
+            keytype: Basic::ED25519,
+        }
     }
     pub fn get_pubkey(signer: &dyn Signer) -> Pubkey {
         signer.pubkey()
@@ -106,5 +114,9 @@ impl KeySet for SolanaKeySet {
             .iter()
             .map(|x| Publickey::new(SolanaKeySet::get_pubkey(x).to_bytes().to_vec()))
             .collect::<Vec<Publickey>>()
+    }
+
+    fn key_type(&self) -> Basic {
+        self.keytype
     }
 }

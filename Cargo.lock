@@ -738,7 +738,6 @@ dependencies = [
  "solana-sdk",
  "solana-test-validator",
  "solana-transaction-status",
- "tempfile",
  "thiserror",
  "tokio",
 ]
@@ -1655,9 +1654,9 @@ checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
 
 [[package]]
 name = "hbkr-rs"
-version = "0.2.1"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f7ced819a2fbcae5e8498c686f8f5edbf4036afbf186781944c277e652be0ed"
+checksum = "3ac888c6f02131119617845fd366481722b4600a5c7f371f3b201fc9f7ef9c83"
 dependencies = [
  "base64 0.13.0",
  "blake3",

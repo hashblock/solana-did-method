@@ -1,10 +1,14 @@
 //! Pasta key wrapper
 
-use hbkr_rs::key_manage::{KeySet, Privatekey, Publickey};
+use hbkr_rs::{
+    basic::Basic,
+    key_manage::{KeySet, Privatekey, Publickey},
+};
 use hbpasta_rs::Keypair as PastaKP;
 
 #[derive(Clone, Debug)]
 pub struct PastaKeySet {
+    keytype: Basic,
     current: Vec<PastaKP>,
     next: Vec<PastaKP>,
 }
@@ -30,7 +34,11 @@ impl PastaKeySet {
             current.push(PastaKP::new());
             next.push(PastaKP::new());
         }
-        Self { current, next }
+        Self {
+            current,
+            next,
+            keytype: Basic::PASTA,
+        }
     }
 
     // pub fn with_current_keypair(in_vec: Vec<PastaKP>) -> Self {
@@ -96,5 +104,9 @@ impl KeySet for PastaKeySet {
             .iter()
             .map(|x| Publickey::new(x.private_key().pubkey().to_bytes().to_vec()))
             .collect::<Vec<Publickey>>()
+    }
+
+    fn key_type(&self) -> Basic {
+        self.keytype
     }
 }

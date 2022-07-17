@@ -11,7 +11,7 @@ use hbkr_rs::{
 };
 
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     env, fs,
     io::Write,
     path::{Path, PathBuf},
@@ -26,8 +26,8 @@ pub struct Wallet {
     #[borsh_skip]
     root_path: PathBuf,
     #[borsh_skip]
-    path: PathBuf,
-    keynames: HashSet<String>,
+    full_path: PathBuf,
+    prefixes: HashSet<String>,
     #[borsh_skip]
     keys: Vec<Keys>,
 }
@@ -46,8 +46,8 @@ impl Wallet {
         wallet_file.push(WALLET_CONFIGURATION);
         let mut wallet = Wallet {
             root_path: loc,
-            path: wallet_file,
-            keynames: HashSet::<String>::new(),
+            full_path: wallet_file,
+            prefixes: HashSet::<String>::new(),
             keys: Vec::<Keys>::new(),
         };
         wallet.save()?;
@@ -56,14 +56,33 @@ impl Wallet {
     /// Add new managed Keys(et) with name
     fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
         let check = keysets.name.clone();
-        if self.keynames.contains(&check) {
+        if self.prefixes.contains(&check) {
             Err(SolDidError::KeysExistError(check))
         } else {
-            self.keynames.insert(check);
+            self.prefixes.insert(check);
             self.keys.push(keysets);
             self.save()?;
             Ok(())
         }
+    }
+
+    /// Incepts a new keyset
+    pub fn incept_keys(&mut self, keyset: &dyn KeySet, threshold: u64) -> SolDidResult<()> {
+        // Create a pre-inception keyset
+        Ok(())
+    }
+    /// Rotate an existing keyset
+    /// Takes
+    ///     The prefix of the keyset (DID ID)
+    ///     A vector of private key base58 strings for the next rotation
+    ///     Optional threshold changes
+    pub fn rotate_keys(
+        &mut self,
+        keyprefix: String,
+        new_next_set: Vec<String>,
+        threshold: Option<u64>,
+    ) -> SolDidResult<()> {
+        Ok(())
     }
 
     // Helper function
@@ -82,10 +101,10 @@ impl Wallet {
             true => {
                 let mut iw = Wallet::try_from_slice(&fs::read(wallet_file.clone())?)?;
                 iw.root_path = root_path;
-                iw.path = wallet_file;
+                iw.full_path = wallet_file;
                 // Iterate through names loading each into keys
                 iw.keys = iw
-                    .keynames
+                    .prefixes
                     .iter()
                     .map(|kn| Wallet::load_key(loc.clone(), kn).unwrap())
                     .collect::<Vec<Keys>>();
@@ -102,7 +121,7 @@ impl Wallet {
 
     /// Write a wallet configuration to a path
     pub fn save(&mut self) -> SolDidResult<()> {
-        let mut file = fs::File::create(self.path.clone())?;
+        let mut file = fs::File::create(self.full_path.clone())?;
         let wser = self.try_to_vec()?;
         file.write(&wser)?;
         for mkey in &mut self.keys {
@@ -111,6 +130,24 @@ impl Wallet {
         Ok(())
     }
 }
+
+/// Attempts to initialize a wallet from the default
+/// location. It will either create the path and default configuration
+/// or read in the existing configuration from the default path
+pub fn init_wallet() -> SolDidResult<Wallet> {
+    let location = match env::var("HOME") {
+        Ok(val) => val + DEFAULT_WALLET_PATH,
+        Err(_) => return Err(SolDidError::HomeNotFoundError),
+    };
+    let wpath = Path::new(&location);
+    match wpath.exists() {
+        true => Wallet::read_from_file(wpath.to_path_buf()),
+        false => Wallet::new(wpath.to_path_buf()),
+    }
+}
+
+/// Load wallet from path
+pub fn load_wallet_from(_location: &Path) {}
 
 /// Keys define a named collection of public and private keys
 /// represented as strings
@@ -123,25 +160,35 @@ pub struct Keys {
     keysets_current: Vec<Key>,
     keysets_next: Vec<Key>,
     keysets_past: Vec<Key>,
+    chain_events: Vec<ChainEvent>,
 }
 
-#[derive(Debug, PartialEq)]
-enum KeyBlock {
+/// Enum identifying which group a key exists in
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
+pub enum KeyBlock {
     NONE,
     CURRENT,
     NEXT,
     PAST,
 }
+
+/// ChainEven tracks/associates keys to a confirmed signature chain event
+/// Signatures are base58 representation
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Default)]
+pub struct ChainEvent {
+    pub chain_signature: String,
+    pub keysets: HashMap<KeyBlock, Key>,
+}
+
 impl Keys {
     /// Accepts a native keyset that is pre-incepted
     /// distributes current (PreInception) and next (NextRotation) keys
     pub fn from_pre_incept_set(
         name: &String,
         key_set: &dyn KeySet,
-        key_type: Basic,
         threshold: u64,
     ) -> SolDidResult<Self> {
-        let set_type = match key_type {
+        let set_type = match key_set.key_type() {
             Basic::ED25519 => KeyType::ED25519,
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
@@ -161,6 +208,7 @@ impl Keys {
                 &key_set.next_private_keys(),
             ),
             keysets_past: Vec::<Key>::new(),
+            chain_events: Vec::<ChainEvent>::new(),
         })
     }
 
@@ -169,10 +217,9 @@ impl Keys {
     pub fn from_post_incept_set(
         name: &String,
         key_set: &dyn KeySet,
-        key_type: Basic,
         threshold: u64,
     ) -> SolDidResult<Self> {
-        let set_type = match key_type {
+        let set_type = match key_set.key_type() {
             Basic::ED25519 => KeyType::ED25519,
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
@@ -192,6 +239,7 @@ impl Keys {
                 &key_set.next_private_keys(),
             ),
             keysets_past: Vec::<Key>::new(),
+            chain_events: Vec::<ChainEvent>::new(),
         })
     }
 
@@ -250,10 +298,17 @@ impl Keys {
         if !(self.keys_state_is(&self.keysets_current)? == KeyState::PreInception) {
             return Err(SolDidError::KeySetIncoherence);
         }
+        // TODO: Execute inception transaction on chain
+        // TODO: Check for success
+        // Build a ChainEvent
+        let mut _chain_event = ChainEvent::default();
+
         // Mark current keys as Incepted
         for k in self.keysets_current.iter_mut() {
             k.set_state(KeyState::Incepted)
         }
+        // TODO: Copy the involved keys in the ChainEvent
+        // TODO: Update (push) the keys ChainEvents
         self.dirty = true;
         Ok(())
     }
@@ -279,6 +334,7 @@ impl Keys {
             Basic::PASTA => KeyType::PASTA,
             // _ => return Err(SolDidError::UnknownKeyTypeError),
         };
+        let mut _chain_event = ChainEvent::default();
         // Move current to past
         for k in self.keysets_current.iter_mut() {
             self.keysets_past
@@ -364,7 +420,7 @@ pub enum KeyType {
 /// Key represents a keypair by encoding the private
 /// key to a string. The keytype provider knows how
 /// to reconstruct into it's keypair type
-#[derive(Debug, BorshDeserialize, BorshSerialize, Hash, Eq, PartialEq, PartialOrd)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
 pub struct Key {
     key_state: KeyState,
     key_type: KeyType,
@@ -385,24 +441,6 @@ impl Key {
     }
 }
 
-/// Attempts to initialize a wallet from the default
-/// location. It will either create the path and default configuration
-/// or read in the existing configuration from the default path
-pub fn init_wallet() -> SolDidResult<Wallet> {
-    let location = match env::var("HOME") {
-        Ok(val) => val + DEFAULT_WALLET_PATH,
-        Err(_) => return Err(SolDidError::HomeNotFoundError),
-    };
-    let wpath = Path::new(&location);
-    match wpath.exists() {
-        true => Wallet::read_from_file(wpath.to_path_buf()),
-        false => Wallet::new(wpath.to_path_buf()),
-    }
-}
-
-/// Load wallet from path
-pub fn load_wallet_from(_: &Path) {}
-
 /// Print to json string
 pub fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
     print!("{title}\n{}\n", serde_json::to_string(event).unwrap());
@@ -422,8 +460,8 @@ mod wallet_tests {
     #[test]
     fn base_wallet_create_test_pass() -> SolDidResult<()> {
         let w = init_wallet()?;
-        assert!(w.keynames.is_empty());
-        fs::remove_dir_all(w.path.parent().unwrap())?;
+        assert!(w.prefixes.is_empty());
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
 
@@ -431,8 +469,8 @@ mod wallet_tests {
     fn base_load_existing_pass() -> SolDidResult<()> {
         let _ = init_wallet()?;
         let w = init_wallet()?;
-        assert!(w.keynames.is_empty());
-        fs::remove_dir_all(w.path.parent().unwrap())?;
+        assert!(w.prefixes.is_empty());
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
     #[test]
@@ -440,8 +478,7 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let wkeyset =
-            Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
         let one_key = kset1
             .current_private_keys()
             .first()
@@ -458,8 +495,7 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let wkeyset =
-            Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
         let err_key = PastaKP::new();
         let res = wkeyset.has_key(&err_key.to_base58_string());
         assert!(!res.0);
@@ -471,16 +507,16 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let mut wkeyset =
-            Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let mut wkeyset = Keys::from_pre_incept_set(&"Frank".to_string(), &kset1, threshold)?;
         assert_eq!(
             wkeyset.keys_state_is(&wkeyset.keysets_current)?,
             KeyState::PreInception
         );
+
         wkeyset.inception_event()?;
         assert_eq!(
             wkeyset.keys_state_is(&wkeyset.keysets_current)?,
-            KeyState::Incepted
+            KeyState::Incepted,
         );
         Ok(())
     }
@@ -489,8 +525,7 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let mut wkeyset =
-            Keys::from_post_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let mut wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
         assert_eq!(
             wkeyset.keys_state_is(&wkeyset.keysets_current)?,
             KeyState::Incepted
@@ -501,6 +536,7 @@ mod wallet_tests {
             .iter()
             .map(|s| s.as_base58_string())
             .collect::<Vec<String>>();
+
         wkeyset.rotation_event(Basic::PASTA, pkeys)?;
         assert_eq!(
             wkeyset.keys_state_is(&wkeyset.keysets_current)?,
@@ -515,14 +551,13 @@ mod wallet_tests {
     #[test]
     fn add_incepted_pasta_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
-        assert!(w.keynames.is_empty());
+        assert!(w.prefixes.is_empty());
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
         // Inception
         let _icp_event = incept(&kset1, Basic::PASTA, threshold)?;
-        let wkeyset =
-            Keys::from_post_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
         let one_key = kset1
             .current_private_keys()
             .first()
@@ -531,27 +566,26 @@ mod wallet_tests {
         assert!(wkeyset.has_key(&one_key).0);
         w.add_keys(wkeyset)?;
         let w = init_wallet()?;
-        assert_eq!(w.keynames.len(), 1);
+        assert_eq!(w.prefixes.len(), 1);
         // println!("\nWallet loaded \n{:?}", w);
-        fs::remove_dir_all(w.path.parent().unwrap())?;
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
     #[test]
     fn add_incepted_solana_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
-        assert!(w.keynames.is_empty());
+        assert!(w.prefixes.is_empty());
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = SolanaKeySet::new_for(count);
         // Inception
         let _icp_event = incept(&kset1, Basic::ED25519, threshold)?;
-        let wkeyset =
-            Keys::from_post_incept_set(&"Frank".to_string(), &kset1, Basic::PASTA, threshold)?;
+        let wkeyset = Keys::from_post_incept_set(&"Frank".to_string(), &kset1, threshold)?;
         w.add_keys(wkeyset)?;
         let w = init_wallet()?;
-        assert_eq!(w.keynames.len(), 1);
+        assert_eq!(w.prefixes.len(), 1);
         // println!("\nWallet loaded \n{:?}", w);
-        fs::remove_dir_all(w.path.parent().unwrap())?;
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
 }

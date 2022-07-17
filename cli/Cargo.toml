@@ -2,7 +2,7 @@
 name = "cli"
 version = "0.2.0"
 edition = "2021"
-description = "solana-did-methond file system wallet CLI"
+description = "solana-did-method file system wallet CLI"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -13,7 +13,7 @@ bs58 = "0.4.0"
 clap = { version = "3", features = ["cargo"] }
 ed25519-dalek ="1.0.1"
 hbpasta-rs ="0.1.0"
-hbkr-rs ="0.2.1"
+hbkr-rs ="0.2.2"
 serde_json = "1.0.81"
 solana-client = "1.10.28"
 solana-cli-config = "1.10.28"
@@ -28,4 +28,3 @@ solana-sdk = "1.10.28"
 solana-logger = "1.10.28"
 solana-rpc = "1.10.28"
 solana-test-validator =  "1.10.28"
-tempfile = "3.1"
