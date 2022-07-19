@@ -1,12 +1,15 @@
 //! Wallet for local file management
 
+pub mod chain_event;
+pub mod wallet_enums;
+
 use crate::{
     chain_trait::Chain,
     errors::{SolDidError, SolDidResult},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
+use chain_event::{ChainEvent, ChainEventType, KeyBlock};
 use hbkr_rs::{
-    basic::Basic,
     event::Event,
     event_message::EventMessage,
     inception,
@@ -16,25 +19,17 @@ use hbkr_rs::{
 };
 
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashSet,
     env, fs,
     io::Write,
     path::{Path, PathBuf},
 };
 
+use self::wallet_enums::{KeyState, KeyType};
+
 static DEFAULT_WALLET_PATH: &str = "/.solwall";
 static WALLET_CONFIGURATION: &str = "wallet.bor";
 static KEYS_CONFIGURATION: &str = "keys.bor";
-
-/// ChainEven tracks/associates keys to a confirmed signature chain event
-/// Signatures are base58 representation
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Default)]
-pub struct ChainEvent {
-    pub did_signature: String,
-    pub km_sn: u64,
-    pub km_digest: String,
-    pub keysets: HashMap<KeyBlock, Vec<Key>>,
-}
 
 #[derive(Debug, BorshDeserialize, BorshSerialize)]
 pub struct Wallet {
@@ -81,39 +76,34 @@ impl Wallet {
         }
     }
 
-    /// Incepts a new keyset
-    pub fn incept_keys(
+    /// Creates a new DID with keyset
+    pub fn new_did(
         &mut self,
         keyset: &dyn KeySet,
         threshold: u64,
         chain: Option<&dyn Chain>,
-    ) -> SolDidResult<()> {
-        // Create a pre-inception keyset
-        let icp_event = inception(keyset, threshold)?;
-        let prefix = icp_event.event.get_prefix().to_str();
-        // TODO: Send to chain
-        let signature = match chain {
-            Some(chain) => chain.inception_inst(&icp_event)?,
-            None => "sol_did_signature".to_string(),
-        };
-        let keys = Keys::from_inception(icp_event, signature, keyset, threshold)?;
-        self.prefixes.insert(prefix);
-        self.keys.push(keys);
-        self.save()?;
-        Ok(())
+    ) -> SolDidResult<String> {
+        let (keys, prefix) = Keys::incept_keys(chain, keyset, threshold)?;
+        self.add_keys(keys)?;
+        Ok(prefix)
     }
-    /// Rotate an existing keyset
+    /// Rotate a DID
     /// Takes
-    ///     The prefix of the keyset (DID ID)
-    ///     A vector of private key base58 strings for the next rotation
+    ///     The prefix (DID ID)
+    ///     Optional vector of private keys
     ///     Optional threshold changes
-    pub fn rotate_keys(
+    pub fn rotate_did(
         &mut self,
         keyprefix: String,
-        new_next_set: Vec<String>,
+        new_next_set: Option<Vec<Privatekey>>,
         threshold: Option<u64>,
+        chain: Option<&dyn Chain>,
     ) -> SolDidResult<()> {
-        Ok(())
+        if self.prefixes.contains(&keyprefix) {
+            Ok(())
+        } else {
+            Err(SolDidError::KeyNotFound(keyprefix))
+        }
     }
 
     // Helper function
@@ -198,37 +188,32 @@ pub struct Keys {
     chain_events: Vec<ChainEvent>,
 }
 
-/// Enum identifying which group a key exists in
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
-pub enum KeyBlock {
-    NONE,
-    CURRENT,
-    NEXT,
-    PAST,
-}
-
 impl Keys {
     /// Accepts a native keyset this has been incepted
     /// distributes current (Incepted) and next (NextRotation) keys
     /// and stores the chain event initiating this function call
-    fn from_inception(
-        icp_event: EventMessage<SaidEvent<Event>>,
-        did_signature: String,
+    fn incept_keys(
+        chain: Option<&dyn Chain>,
         key_set: &dyn KeySet,
         threshold: u64,
-    ) -> SolDidResult<Self> {
-        let set_type = match key_set.key_type() {
-            Basic::ED25519 => KeyType::ED25519,
-            Basic::PASTA => KeyType::PASTA,
-            // _ => return Err(SolDidError::UnknownKeyTypeError),
+    ) -> SolDidResult<(Self, String)> {
+        // Create an inception event
+        let icp_event = inception(key_set, threshold)?;
+        // Optionally store on chain
+        let signature = match chain {
+            Some(chain) => chain.inception_inst(&icp_event)?,
+            None => "sol_did_signature".to_string(),
         };
+
+        // Covert Type
+        let set_type = KeyType::from(key_set.key_type());
         // Setup the chain event
-        let mut chain_event = ChainEvent::default();
+        let mut chain_event = ChainEvent::from(&icp_event);
         let prefix = icp_event.event.get_prefix().to_str();
-        chain_event.km_sn = icp_event.event.get_sn();
-        chain_event.km_digest = icp_event.get_digest().to_str();
-        chain_event.did_signature = did_signature;
-        // Setup the keys
+        chain_event.km_keytype = set_type;
+        chain_event.did_signature = signature.clone();
+
+        // Convert keyset current keys and next keys to Key
         let keysets_current = Keys::to_keys_from_private(
             KeyState::Incepted,
             set_type,
@@ -250,15 +235,18 @@ impl Keys {
         let mut chain_vec = Vec::<ChainEvent>::new();
         chain_vec.push(chain_event);
         // Return Self
-        Ok(Keys {
-            dirty: true,
-            prefix,
-            threshold,
-            keysets_current,
-            keysets_next,
-            keysets_past: Vec::<Key>::new(),
-            chain_events: chain_vec,
-        })
+        Ok((
+            Keys {
+                dirty: true,
+                prefix,
+                threshold,
+                keysets_current,
+                keysets_next,
+                keysets_past: Vec::<Key>::new(),
+                chain_events: chain_vec,
+            },
+            signature,
+        ))
     }
 
     /// Generate Keys from Privatekeys
@@ -308,6 +296,55 @@ impl Keys {
             }
         }
         (false, KeyBlock::NONE)
+    }
+
+    fn rotate_keys(
+        &mut self,
+        barren_ks: &mut dyn KeySet,
+        threshold: Option<u64>,
+        chain: Option<&dyn Chain>,
+    ) -> SolDidResult<()> {
+        // Validate state
+        if self.chain_events.len() == 0 {
+            return Err(SolDidError::RotationIncoherence);
+        }
+        let last_event = self.chain_events.last().unwrap();
+        // Expand when we have more coverage
+        if let ChainEventType::Inception | ChainEventType::Rotation = last_event.event_type {
+        } else {
+            return Err(SolDidError::RotationIncompatible);
+        }
+        // Re-hydrate the keystate
+        let (_, cvec) = last_event
+            .keysets
+            .get_key_value(&KeyBlock::CURRENT)
+            .unwrap();
+        let (_, nvec) = last_event.keysets.get_key_value(&KeyBlock::NEXT).unwrap();
+        barren_ks.from(
+            cvec.iter().map(|k| k.key.clone()).collect::<Vec<String>>(),
+            nvec.iter().map(|k| k.key.clone()).collect::<Vec<String>>(),
+        );
+        // Default rotation
+        let (_ncurr, _nnext) = barren_ks.rotate(None);
+        // Rotate event
+        // Perhaps store on chain
+        let _sig = match chain {
+            Some(_bc) => todo!(),
+            None => "sol_did_event".to_string(),
+        };
+        // Repopulate
+        // let keysets_current = Keys::to_keys_from_private(
+        //     KeyState::Incepted,
+        //     set_type,
+        //     &key_set.current_private_keys(),
+        // );
+        // let keysets_next = Keys::to_keys_from_private(
+        //     KeyState::NextRotation,
+        //     set_type,
+        //     &key_set.next_private_keys(),
+        // );
+
+        Ok(())
     }
 
     // /// rotation_event occurs adding new keys for the next rotation
@@ -399,21 +436,6 @@ impl Keys {
     }
 }
 
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Hash, Eq, PartialEq, PartialOrd)]
-pub enum KeyState {
-    PreInception,
-    Incepted,
-    NextRotation,
-    Rotated,
-    RotatedOut,
-    Revoked,
-}
-#[derive(Debug, BorshDeserialize, BorshSerialize, Clone, Copy, Hash, Eq, PartialEq, PartialOrd)]
-pub enum KeyType {
-    ED25519,
-    PASTA,
-}
-
 /// Key represents a keypair by encoding the private
 /// key to a string. The keytype provider knows how
 /// to reconstruct into it's keypair type
@@ -475,7 +497,8 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        w.incept_keys(&kset1, threshold, None)?;
+        let prefix = w.new_did(&kset1, threshold, None)?;
+        assert_eq!("sol_did_signature".to_string(), prefix);
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
@@ -488,7 +511,7 @@ mod wallet_tests {
         let count = 2u8;
         let threshold = 1u64;
         let kset1 = SolanaKeySet::new_for(count);
-        w.incept_keys(&kset1, threshold, None)?;
+        w.new_did(&kset1, threshold, None)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;

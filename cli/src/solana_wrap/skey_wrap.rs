@@ -1,12 +1,13 @@
 //! Solana Keys Wrapper
 use hbkr_rs::{
     basic::Basic,
-    key_manage::{KeySet, Privatekey, Publickey},
+    key_manage::{KeySet, PrivKey, Privatekey, Publickey},
 };
 use solana_sdk::{pubkey::Pubkey, signature::Keypair, signer::Signer};
 
 #[derive(Debug)]
 pub struct SolanaKeySet {
+    barren: bool,
     keytype: Basic,
     current: Vec<Keypair>,
     next: Vec<Keypair>,
@@ -34,9 +35,19 @@ impl SolanaKeySet {
             next.push(Keypair::new());
         }
         Self {
+            barren: false,
             current,
             next,
             keytype: Basic::ED25519,
+        }
+    }
+    /// Create an empty KeySet
+    pub fn new_empty() -> Self {
+        Self {
+            barren: true,
+            keytype: Basic::ED25519,
+            current: Vec::<Keypair>::new(),
+            next: Vec::<Keypair>::new(),
         }
     }
     pub fn get_pubkey(signer: &dyn Signer) -> Pubkey {
@@ -79,14 +90,42 @@ impl SolanaKeySet {
 }
 
 impl KeySet for SolanaKeySet {
-    fn rotate(&mut self) {
-        self.current = SolanaKeySet::clone(&self.next);
-        self.next = self
-            .current
-            .iter()
-            .map(|_| Keypair::new())
-            .collect::<Vec<Keypair>>()
+    fn is_barren(&self) -> bool {
+        self.barren
     }
+
+    fn from(&mut self, current_ks: Vec<String>, next_ks: Vec<String>) {
+        self.current = current_ks
+            .iter()
+            .map(|s| Keypair::from_base58_string(s))
+            .collect::<Vec<Keypair>>();
+        self.current = current_ks
+            .iter()
+            .map(|s| Keypair::from_base58_string(s))
+            .collect::<Vec<Keypair>>();
+    }
+
+    fn rotate(&mut self, new_next: Option<Vec<Privatekey>>) -> (Vec<Privatekey>, Vec<Privatekey>) {
+        self.current = SolanaKeySet::clone(&self.next);
+        self.next = match new_next {
+            Some(k) => k
+                .iter()
+                .map(|s| Keypair::from_base58_string(&s.as_base58_string()))
+                .collect::<Vec<Keypair>>(),
+            None => self
+                .current
+                .iter()
+                .map(|_| Keypair::new())
+                .collect::<Vec<Keypair>>(),
+        };
+        // self.next = self
+        //     .current
+        //     .iter()
+        //     .map(|_| Keypair::new())
+        //     .collect::<Vec<Keypair>>()
+        (self.current_private_keys(), self.next_private_keys())
+    }
+
     fn current_private_keys(&self) -> Vec<Privatekey> {
         self.current
             .iter()

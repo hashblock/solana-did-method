@@ -15,7 +15,7 @@ async fn main() -> SolDidResult<()> {
     let cmdline = command_line().get_matches();
     let (_command, _matches) = cmdline.subcommand().unwrap();
 
-    // Load wallet
+    // Load default wallet or use user provided command line wallet path
 
     // Load chain wrapper
     let _chain = SolanaChain::default();

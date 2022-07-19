@@ -2,12 +2,15 @@
 
 use hbkr_rs::{
     basic::Basic,
-    key_manage::{KeySet, Privatekey, Publickey},
+    key_manage::{KeySet, PrivKey, Privatekey, Publickey},
 };
 use hbpasta_rs::Keypair as PastaKP;
 
+use crate::errors::SolDidResult;
+
 #[derive(Clone, Debug)]
 pub struct PastaKeySet {
+    barren: bool,
     keytype: Basic,
     current: Vec<PastaKP>,
     next: Vec<PastaKP>,
@@ -35,11 +38,39 @@ impl PastaKeySet {
             next.push(PastaKP::new());
         }
         Self {
+            barren: false,
             current,
             next,
             keytype: Basic::PASTA,
         }
     }
+
+    /// Create an empty KeySet
+    pub fn new_empty() -> Self {
+        Self {
+            barren: true,
+            keytype: Basic::PASTA,
+            current: Vec::<PastaKP>::new(),
+            next: Vec::<PastaKP>::new(),
+        }
+    }
+
+    // pub fn reconstruct(current: Vec<String>, next: Vec<String>) -> SolDidResult<Self> {
+    //     let curr_kps = current
+    //         .iter()
+    //         .map(|in_str| PastaKP::from_base58_string(&in_str).unwrap())
+    //         .collect::<Vec<PastaKP>>();
+    //     let next_kps = next
+    //         .iter()
+    //         .map(|in_str| PastaKP::from_base58_string(&in_str).unwrap())
+    //         .collect::<Vec<PastaKP>>();
+    //     Ok(PastaKeySet {
+    //         barren: false,
+    //         keytype: Basic::PASTA,
+    //         current: curr_kps,
+    //         next: next_kps,
+    //     })
+    // }
 
     // pub fn with_current_keypair(in_vec: Vec<PastaKP>) -> Self {
     //     Self {
@@ -70,13 +101,34 @@ impl PastaKeySet {
 }
 
 impl KeySet for PastaKeySet {
-    fn rotate(&mut self) {
-        self.current = self.next.clone();
-        self.next = self
-            .current
+    fn is_barren(&self) -> bool {
+        self.barren
+    }
+
+    fn from(&mut self, current_ks: Vec<String>, next_ks: Vec<String>) {
+        self.current = current_ks
             .iter()
-            .map(|_| PastaKP::new())
-            .collect::<Vec<PastaKP>>()
+            .map(|s| PastaKP::from_base58_string(s).unwrap())
+            .collect::<Vec<PastaKP>>();
+        self.next = next_ks
+            .iter()
+            .map(|s| PastaKP::from_base58_string(s).unwrap())
+            .collect::<Vec<PastaKP>>();
+    }
+    fn rotate(&mut self, new_next: Option<Vec<Privatekey>>) -> (Vec<Privatekey>, Vec<Privatekey>) {
+        self.current = self.next.clone();
+        self.next = match new_next {
+            Some(k) => k
+                .iter()
+                .map(|s| PastaKP::from_base58_string(&s.as_base58_string()).unwrap())
+                .collect::<Vec<PastaKP>>(),
+            None => self
+                .current
+                .iter()
+                .map(|_| PastaKP::new())
+                .collect::<Vec<PastaKP>>(),
+        };
+        (self.current_private_keys(), self.next_private_keys())
     }
     fn current_private_keys(&self) -> Vec<Privatekey> {
         self.current
