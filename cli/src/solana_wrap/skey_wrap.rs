@@ -14,18 +14,6 @@ pub struct SolanaKeySet {
 }
 
 impl SolanaKeySet {
-    /// Create a default set for one (1) current and next KeyPairs for KeySet
-    // pub fn new() -> Self {
-    //     let mut curr_vec = Vec::<PastaKP>::new();
-    //     curr_vec.push(PastaKP::new());
-    //     let mut next_vec = Vec::<PastaKP>::new();
-    //     next_vec.push(PastaKP::new());
-    //     Self {
-    //         current: curr_vec,
-    //         next: next_vec,
-    //     }
-    // }
-
     /// Create a KeySet for count (1-255) current next KeyPairs
     pub fn new_for(count: u8) -> Self {
         let mut current = Vec::<Keypair>::new();
@@ -45,9 +33,9 @@ impl SolanaKeySet {
     pub fn new_empty() -> Self {
         Self {
             barren: true,
-            keytype: Basic::ED25519,
             current: Vec::<Keypair>::new(),
             next: Vec::<Keypair>::new(),
+            keytype: Basic::ED25519,
         }
     }
     pub fn get_pubkey(signer: &dyn Signer) -> Pubkey {
@@ -60,33 +48,17 @@ impl SolanaKeySet {
             .map(|kp| Keypair::from_base58_string(&kp.to_base58_string()))
             .collect::<Vec<Keypair>>()
     }
+}
 
-    // pub fn with_current_keypair(in_vec: Vec<PastaKP>) -> Self {
-    //     Self {
-    //         current: in_vec.clone(),
-    //         next: in_vec
-    //             .iter()
-    //             .map(|_| PastaKP::new())
-    //             .collect::<Vec<PastaKP>>(),
-    //     }
-    // }
-
-    // pub fn with_current_and_next_keypairs(
-    //     in_current: Vec<PastaKP>,
-    //     in_next: Vec<PastaKP>,
-    // ) -> Self {
-    //     Self {
-    //         current: in_current,
-    //         next: in_next,
-    //     }
-    // }
-
-    // pub fn from_file(fpath: &Path) -> Self {
-    //     todo!()
-    // }
-    // pub fn to_file(&self, fpath: &Path) {
-    //     todo!()
-    // }
+impl Clone for SolanaKeySet {
+    fn clone(&self) -> Self {
+        Self {
+            barren: self.barren,
+            keytype: self.keytype,
+            current: SolanaKeySet::clone(&self.current),
+            next: SolanaKeySet::clone(&self.next),
+        }
+    }
 }
 
 impl KeySet for SolanaKeySet {
@@ -99,7 +71,7 @@ impl KeySet for SolanaKeySet {
             .iter()
             .map(|s| Keypair::from_base58_string(s))
             .collect::<Vec<Keypair>>();
-        self.current = current_ks
+        self.next = next_ks
             .iter()
             .map(|s| Keypair::from_base58_string(s))
             .collect::<Vec<Keypair>>();
@@ -118,11 +90,6 @@ impl KeySet for SolanaKeySet {
                 .map(|_| Keypair::new())
                 .collect::<Vec<Keypair>>(),
         };
-        // self.next = self
-        //     .current
-        //     .iter()
-        //     .map(|_| Keypair::new())
-        //     .collect::<Vec<Keypair>>()
         (self.current_private_keys(), self.next_private_keys())
     }
 

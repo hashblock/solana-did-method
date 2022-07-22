@@ -1,11 +1,13 @@
 //! Chain event mirroring on keys for DID
 
+use crate::errors::{SolDidError, SolDidResult};
+
 use super::{wallet_enums::KeyType, Key};
 use borsh::{BorshDeserialize, BorshSerialize};
 use hbkr_rs::{event::Event, event_message::EventMessage, said_event::SaidEvent, Prefix};
 use std::collections::HashMap;
 
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug)]
 pub enum ChainEventType {
     Inception,
     Rotation,
@@ -13,6 +15,17 @@ pub enum ChainEventType {
     DelegatedRotation,
     Revoked,
     Decommisioined,
+}
+
+impl ChainEventType {
+    pub fn can_rotate(prev: ChainEventType) -> bool {
+        // Expand when we have more coverage
+        if let ChainEventType::Inception | ChainEventType::Rotation = prev {
+            true
+        } else {
+            false
+        }
+    }
 }
 
 impl Default for ChainEventType {
@@ -42,13 +55,22 @@ pub struct ChainEvent {
     pub keysets: HashMap<KeyBlock, Vec<Key>>,
 }
 
-impl ChainEvent {}
+impl ChainEvent {
+    pub fn get_keys_for(&self, block_type: KeyBlock) -> SolDidResult<&Vec<Key>> {
+        if self.keysets.contains_key(&block_type) {
+            Ok(self.keysets.get(&block_type).unwrap())
+        } else {
+            Err(SolDidError::KeySetIncoherence)
+        }
+    }
+}
 
 impl From<&EventMessage<SaidEvent<Event>>> for ChainEvent {
     fn from(event: &EventMessage<SaidEvent<Event>>) -> Self {
         let mut ce = ChainEvent::default();
         ce.km_sn = event.event.get_sn();
         ce.km_digest = event.get_digest().to_str();
+        // TODO: Get event type from event
         ce
     }
 }
