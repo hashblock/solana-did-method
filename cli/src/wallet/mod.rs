@@ -416,10 +416,8 @@ pub fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
 #[cfg(test)]
 mod wallet_tests {
 
-    use crate::pkey_wrap::PastaKeySet;
-    use crate::solana_wrap::skey_wrap::SolanaKeySet;
-
     use super::*;
+    use crate::pkey_wrap::PastaKeySet;
 
     #[test]
     fn base_wallet_create_test_pass() -> SolDidResult<()> {
@@ -442,24 +440,11 @@ mod wallet_tests {
     fn inception_pasta_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
-        let count = 2u8;
+        let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
         let prefix = w.new_did(&kset1, threshold, None)?;
         assert_eq!("sol_did_signature".to_string(), prefix);
-        let w = init_wallet()?;
-        assert_eq!(w.prefixes.len(), 1);
-        fs::remove_dir_all(w.full_path.parent().unwrap())?;
-        Ok(())
-    }
-    #[test]
-    fn inception_solana_keys_test_pass() -> SolDidResult<()> {
-        let mut w = init_wallet()?;
-        assert!(w.prefixes.is_empty());
-        let count = 2u8;
-        let threshold = 1u64;
-        let kset1 = SolanaKeySet::new_for(count);
-        w.new_did(&kset1, threshold, None)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
@@ -470,7 +455,7 @@ mod wallet_tests {
     fn rotation_pasta_keys_test_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
-        let count = 2u8;
+        let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
         let _prefix = w.new_did(&kset1, threshold, None)?;
@@ -482,35 +467,6 @@ mod wallet_tests {
         // Rotate
         let mut w = init_wallet()?;
         let mut barren_ks = PastaKeySet::new_empty();
-        let _ = w.rotate_did(prefix.clone(), &mut barren_ks, None, None, None)?;
-        // Observe
-        let rot_keys = w.keys.first().unwrap();
-        let rot_prefix = rot_keys.prefix();
-        assert_eq!(rot_prefix, &prefix);
-        assert_eq!(
-            new_first.keysets_next.first().unwrap().key,
-            rot_keys.keysets_current.first().unwrap().key
-        );
-        fs::remove_dir_all(w.full_path.parent().unwrap())?;
-        Ok(())
-    }
-
-    #[test]
-    fn rotation_solana_keys_test_pass() -> SolDidResult<()> {
-        let mut w = init_wallet()?;
-        assert!(w.prefixes.is_empty());
-        let count = 2u8;
-        let threshold = 1u64;
-        let kset1 = SolanaKeySet::new_for(count);
-        let _prefix = w.new_did(&kset1, threshold, None)?;
-        let w = init_wallet()?;
-        assert_eq!(w.prefixes.len(), 1);
-        // Target prefix we want to rotation
-        let new_first = w.keys.first().unwrap().clone();
-        let prefix = new_first.prefix().to_string();
-        // Rotate
-        let mut w = init_wallet()?;
-        let mut barren_ks = SolanaKeySet::new_empty();
         let _ = w.rotate_did(prefix.clone(), &mut barren_ks, None, None, None)?;
         // Observe
         let rot_keys = w.keys.first().unwrap();

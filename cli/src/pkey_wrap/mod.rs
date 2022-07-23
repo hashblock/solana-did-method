@@ -16,7 +16,7 @@ pub struct PastaKeySet {
 
 impl PastaKeySet {
     /// Create a KeySet for count (1-255) current next KeyPairs
-    pub fn new_for(count: u8) -> Self {
+    pub fn new_for(count: i8) -> Self {
         let mut current = Vec::<PastaKP>::new();
         let mut next = Vec::<PastaKP>::new();
         for _ in 0..count {
@@ -102,5 +102,20 @@ impl KeySet for PastaKeySet {
 
     fn key_type(&self) -> Basic {
         self.keytype
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::errors::SolDidResult;
+
+    use super::*;
+    #[test]
+    fn test_basic_with_pasta_pass() -> SolDidResult<()> {
+        //  Keys 1
+        let count = 2i8;
+        let kset1 = PastaKeySet::new_for(count);
+        assert!(!kset1.is_barren());
+        Ok(())
     }
 }

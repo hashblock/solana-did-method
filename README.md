@@ -26,7 +26,7 @@ $ sudo apt-get install libssl-dev libudev-dev pkg-config zlib1g-dev llvm clang m
 
 Finally, install the latest [Solana CLI Suite](https://docs.solana.com/cli/install-solana-cli-tools)
 
-## **2. Clone the solana-keri repo.**
+## **2. Clone the solana-did-method repo.**
 
 Using https
 ```bash
