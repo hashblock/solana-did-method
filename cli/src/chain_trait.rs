@@ -1,7 +1,10 @@
 //! Chain trait definition
 
 use hbkr_rs::{
-    event::Event, event_message::EventMessage, key_manage::Publickey, said_event::SaidEvent,
+    event::Event,
+    event_message::EventMessage,
+    key_manage::{KeySet, Publickey},
+    said_event::SaidEvent,
 };
 
 use crate::errors::SolDidResult;
@@ -13,6 +16,7 @@ pub trait Chain: std::fmt::Debug {
     /// Inception instruction put on the chain
     fn inception_inst(
         &self,
+        key_set: &dyn KeySet,
         event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature>;
     /// Rotation instruction put on the chain

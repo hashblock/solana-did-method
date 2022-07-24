@@ -2,10 +2,7 @@
 mod clparse;
 pub mod errors;
 
-use cli::{
-    errors::{SolDidError, SolDidResult},
-    solana_wrap::schain_wrap::SolanaChain,
-};
+use cli::{errors::SolDidResult, solana_wrap::schain_wrap::SolanaChain};
 
 use crate::clparse::command_line;
 

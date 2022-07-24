@@ -1,22 +1,35 @@
 //! Solana Chain wraps the interface and behavior for block chain
 
-use std::fmt::Debug;
+use std::{fmt::Debug, str::FromStr};
 
 use crate::{
     chain_trait::{Chain, ChainSignature, DidSigner},
-    errors::SolDidResult,
+    errors::{SolDidError, SolDidResult},
 };
 
 use hbkr_rs::{
-    event::Event, event_message::EventMessage, key_manage::Publickey, said_event::SaidEvent,
+    event::Event,
+    event_message::EventMessage,
+    key_manage::{KeySet, PubKey, Publickey},
+    said_event::SaidEvent,
+    Prefix,
 };
 
 use solana_client::rpc_client::RpcClient;
-use solana_did_method::id;
+use solana_did_method::{
+    id,
+    instruction::{InceptionDID, InitializeDidAccount, SDMInstruction, SMDKeyType},
+    state::SDMDidState,
+};
 use solana_sdk::{
     commitment_config::CommitmentConfig,
-    pubkey::Pubkey,
-    signature::{read_keypair_file, Keypair},
+    ed25519_instruction,
+    instruction::{AccountMeta, Instruction},
+    message::Message,
+    pubkey::{Pubkey, PUBKEY_BYTES},
+    signature::{read_keypair_file, Keypair, Signature},
+    signer::Signer,
+    transaction::Transaction,
 };
 
 pub struct SolanaChain {
@@ -57,6 +70,32 @@ impl SolanaChain {
         let version = self.rpc_client.get_version().unwrap();
         semver::Version::parse(&version.solana_core).unwrap()
     }
+
+    /// Generate a safe PDA account address
+    /// Form a PDA public key
+    fn safe_pda_from_digest(
+        &self,
+        prefix: &String,
+        prefix_digest: &Vec<u8>,
+    ) -> SolDidResult<(Pubkey, u8)> {
+        let (pda_pk, bump) = Pubkey::find_program_address(&[prefix_digest], &self.program_id);
+        let check_acc = self.rpc_client.get_account(&pda_pk);
+        if check_acc.is_ok() {
+            Err(SolDidError::DIDExists(prefix.to_string()))
+        } else {
+            Ok((pda_pk, bump))
+        }
+    }
+    /// Submits a transaction with programs instruction
+    fn submit_transaction(&self, instructions: Vec<Instruction>) -> SolDidResult<Signature> {
+        let mut transaction =
+            Transaction::new_unsigned(Message::new(&instructions, Some(&self.signer.pubkey())));
+        let recent_blockhash = self.rpc_client.get_latest_blockhash().unwrap();
+        transaction
+            .try_sign(&vec![&self.signer], recent_blockhash)
+            .unwrap();
+        Ok(self.rpc_client.send_and_confirm_transaction(&transaction)?)
+    }
 }
 
 /// Default implementation for SolanaChain
@@ -66,20 +105,19 @@ impl Default for SolanaChain {
             Some(cfgpath) => solana_cli_config::Config::load(&cfgpath).unwrap(),
             None => solana_cli_config::Config::default(),
         };
-        let rpc_url = cli_config.json_rpc_url.clone();
-        let default_signer = read_keypair_file(cli_config.keypair_path).unwrap();
-        let rpc_client =
-            RpcClient::new_with_commitment(cli_config.json_rpc_url, CommitmentConfig::confirmed());
-
         Self {
-            rpc_client: rpc_client,
-            rpc_url,
-            signer: default_signer,
+            rpc_client: RpcClient::new_with_commitment(
+                cli_config.json_rpc_url.clone(),
+                CommitmentConfig::confirmed(),
+            ),
+            rpc_url: cli_config.json_rpc_url.clone(),
+            signer: read_keypair_file(cli_config.keypair_path).unwrap(),
             program_id: id(),
         }
     }
 }
 
+/// Debug for SolanaChain
 impl Debug for SolanaChain {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("SolanaChain")
@@ -90,16 +128,124 @@ impl Debug for SolanaChain {
             .finish()
     }
 }
+// /// Fetches and decodes a transactions instruction data
+// pub fn instruction_from_transaction(
+//     connection: &RpcClient,
+//     signature: &Signature,
+// ) -> SolKeriResult<SolKeriInstruction> {
+//     let tx_post = connection.get_transaction(&signature, UiTransactionEncoding::Base64);
+//     if tx_post.is_ok() {
+//         let dc = tx_post.unwrap().transaction.transaction.decode();
+//         // println!("{:?}", dc);
+//         match dc {
+//             Some(tx) => {
+//                 println!("Proof instruction {:?}", tx.message.instructions[0]);
+//                 println!("Program instruction {:?}", tx.message.instructions[1]);
+//                 Ok(SolKeriInstruction::try_from_slice(
+//                     &tx.message.instructions[1].data,
+//                 )?)
+//             }
+//             None => Err(SolKeriCliError::DecodeTransactionError),
+//         }
+//     } else {
+//         Err(SolKeriCliError::GetTransactionError)
+//     }
+// }
+
+/// Calculate the size of the DID account state data size
+/// based on number of keys being managed
+pub fn get_inception_datasize(key_count: usize) -> usize {
+    0usize
+        .saturating_add(std::mem::size_of::<bool>()) // Initialized
+        .saturating_add(std::mem::size_of::<u16>()) // Version
+        .saturating_add(std::mem::size_of::<SDMDidState>()) // State
+        .saturating_add(PUBKEY_BYTES) // Prefix pubkey
+        .saturating_add(std::mem::size_of::<u8>()) // bump
+        .saturating_add(std::mem::size_of::<u32>()) // Borsh vector count
+        .saturating_add(PUBKEY_BYTES * key_count) // Vector of keys size
+}
 
 /// Chain trait implementation
 impl Chain for SolanaChain {
+    /// Inception
     fn inception_inst(
         &self,
-        _event_msg: &EventMessage<SaidEvent<Event>>,
+        key_set: &dyn KeySet,
+        event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature> {
-        todo!()
+        // Verify prefix is not already a PDA collision
+        // Create a PDA for our DID
+        let digest_bytes = event_msg.get_digest().digest;
+        let prefix = event_msg.event.get_prefix().to_str();
+        let (pda_key, bump) = self.safe_pda_from_digest(&prefix, &digest_bytes)?;
+        // Account does not exist
+        println!(
+            "Created PDA (pubkey) {:?} bump {} for `did:solana:{}`",
+            pda_key, bump, prefix
+        );
+        // Now we want to create two (2) instructions:
+        // 1. The ed25519 signature verification on the serialized message
+        let verify_instruction = ed25519_instruction::new_ed25519_instruction(
+            &ed25519_dalek::Keypair::from_bytes(&self.signer.to_bytes())?,
+            &event_msg.serialize()?,
+        );
+        // 2. The inception of the DID for our program to the active keys (inception)
+        // Instruction 1 - Add ledger signature verification on our inception data
+        let keys = key_set
+            .current_public_keys()
+            .iter()
+            .map(|k| Pubkey::from_str(&k.as_base58_string()).unwrap())
+            .collect::<Vec<Pubkey>>();
+        let mut prefix_bytes = [0u8; 32];
+        match event_msg.event.get_prefix() {
+            hbkr_rs::identifier_prefix::IdentifierPrefix::SelfAddressing(sa) => {
+                prefix_bytes.copy_from_slice(&sa.digest)
+            }
+            _ => unreachable!(),
+        }
+
+        let data_size = get_inception_datasize(keys.len());
+        let did_account = InceptionDID {
+            keytype: SMDKeyType::PASTA,
+            prefix: prefix_bytes,
+            bump,
+            keys,
+        };
+        println!("\nInception data {:?}", did_account);
+        println!("\nSize for inception structure {}", data_size);
+        let rent_exemption_amount = self
+            .rpc_client
+            .get_minimum_balance_for_rent_exemption(data_size)?;
+        println!("\nPDA Rent Exemption {}", rent_exemption_amount);
+        let init = InitializeDidAccount {
+            rent: 5 * rent_exemption_amount,
+            storage: data_size as u64,
+        };
+        println!("Submitting Solana-Keri Inception Instruction");
+
+        let accounts = &[
+            AccountMeta::new(self.signer.pubkey(), true),
+            AccountMeta::new(pda_key, false),
+            AccountMeta::new(solana_sdk::system_program::id(), false),
+        ];
+        // Build instruction array and submit transaction
+        let txn = self.submit_transaction(
+            [
+                verify_instruction,
+                Instruction::new_with_borsh(
+                    self.program_id,
+                    &SDMInstruction::SDMInception(init, did_account),
+                    accounts.to_vec(),
+                ),
+            ]
+            .to_vec(),
+        );
+        assert!(txn.is_ok());
+        let signature = txn.unwrap();
+        Ok(signature.to_string())
     }
 
+    /// Rotation
     fn rotation_inst(
         &self,
         _event_msg: &EventMessage<SaidEvent<Event>>,

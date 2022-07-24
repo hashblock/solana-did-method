@@ -64,6 +64,10 @@ impl Wallet {
         wallet.save()?;
         Ok(wallet)
     }
+    /// Get the full path for the wallet
+    pub fn full_path(&self) -> &PathBuf {
+        &self.full_path
+    }
     /// Add new managed Keys(et) with name
     fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
         let check = keysets.prefix.clone();
@@ -217,9 +221,10 @@ impl Keys {
     ) -> SolDidResult<(Self, String, String, Vec<u8>)> {
         // Create an inception event
         let icp_event = inception(key_set, threshold)?;
+        let prefix = icp_event.event.get_prefix().to_str();
         // Optionally store on chain
         let signature = match chain {
-            Some(chain) => chain.inception_inst(&icp_event)?,
+            Some(chain) => chain.inception_inst(key_set, &icp_event)?,
             None => "sol_did_signature".to_string(),
         };
 
@@ -227,7 +232,7 @@ impl Keys {
         let set_type = KeyType::from(key_set.key_type());
         // Setup the chain event
         let mut chain_event = ChainEvent::from(&icp_event);
-        let prefix = icp_event.event.get_prefix().to_str();
+
         chain_event.km_keytype = set_type;
         chain_event.did_signature = signature.clone();
 

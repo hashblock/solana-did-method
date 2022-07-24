@@ -1,5 +1,6 @@
 //! CLI Error Mappings
 
+use ed25519_dalek::SignatureError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -47,6 +48,8 @@ pub enum SolDidError {
     HbkrError(#[from] hbkr_rs::errors::KrError),
     #[error("Std Error")]
     StdError(#[from] Box<dyn std::error::Error>),
+    #[error("ED25519 Signature Error")]
+    EDError(#[from] SignatureError),
     // #[error("Serde Error")]
     // SerdeError(#[from] serde_json::Error),
 }
