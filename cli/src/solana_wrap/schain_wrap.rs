@@ -1,5 +1,7 @@
 //! Solana Chain wraps the interface and behavior for block chain
 
+use std::fmt::Debug;
+
 use crate::{
     chain_trait::{Chain, ChainSignature, DidSigner},
     errors::SolDidResult,
@@ -8,7 +10,8 @@ use crate::{
 use hbkr_rs::{
     event::Event, event_message::EventMessage, key_manage::Publickey, said_event::SaidEvent,
 };
-use solana_client::nonblocking::rpc_client::RpcClient;
+
+use solana_client::rpc_client::RpcClient;
 use solana_did_method::id;
 use solana_sdk::{
     commitment_config::CommitmentConfig,
@@ -25,13 +28,16 @@ pub struct SolanaChain {
 
 impl SolanaChain {
     /// Create a new chain instance with designated client and signer
-    pub fn new(rpc_client: RpcClient, signer: Keypair, program_id: Pubkey) -> Self {
+    pub fn new(rpc_client: RpcClient, signer: Keypair, program_id: Option<Pubkey>) -> Self {
         let rpc_url = rpc_client.url();
         Self {
             rpc_url,
             rpc_client,
             signer,
-            program_id,
+            program_id: match program_id {
+                Some(pk) => pk,
+                None => id(),
+            },
         }
     }
     /// Set the program ID from Publickey
@@ -47,8 +53,8 @@ impl SolanaChain {
         Ok(last_pubkey)
     }
     /// Get the version of the chain node
-    pub async fn version(&self) -> semver::Version {
-        let version = self.rpc_client.get_version().await.unwrap();
+    pub fn version(&self) -> semver::Version {
+        let version = self.rpc_client.get_version().unwrap();
         semver::Version::parse(&version.solana_core).unwrap()
     }
 }
@@ -71,6 +77,17 @@ impl Default for SolanaChain {
             signer: default_signer,
             program_id: id(),
         }
+    }
+}
+
+impl Debug for SolanaChain {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SolanaChain")
+            .field("rpc_url", &self.rpc_url)
+            // .field("rpc_client", &self.rpc_client)
+            .field("signer", &self.signer)
+            .field("program_id", &self.program_id)
+            .finish()
     }
 }
 
@@ -100,5 +117,18 @@ impl Chain for SolanaChain {
 
     fn program_id(&self) -> hbkr_rs::key_manage::Publickey {
         hbkr_rs::key_manage::Publickey::new(self.program_id.to_bytes().to_vec())
+    }
+}
+
+#[cfg(test)]
+mod chain_tests {
+    use super::*;
+    use crate::errors::SolDidResult;
+
+    #[test]
+    fn test_chain_default_pass() -> SolDidResult<()> {
+        let mchain = SolanaChain::default();
+        assert_eq!(mchain.program_id, id());
+        Ok(())
     }
 }

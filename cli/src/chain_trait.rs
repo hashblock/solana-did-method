@@ -9,7 +9,7 @@ use crate::errors::SolDidResult;
 /// DIdSigner is a type able to sign transactions
 pub type DidSigner = Vec<u8>;
 pub type ChainSignature = String;
-pub trait Chain {
+pub trait Chain: std::fmt::Debug {
     /// Inception instruction put on the chain
     fn inception_inst(
         &self,

@@ -2,7 +2,9 @@
 mod tests {
     // use cli::{errors::SolDidResult, pkey_wrap::PastaKeySet, wallet::to_json};
 
-    use cli::{errors::SolDidResult, pkey_wrap::PastaKeySet};
+    use cli::{
+        errors::SolDidResult, pkey_wrap::PastaKeySet, solana_wrap::schain_wrap::SolanaChain,
+    };
     use hbkr_rs::key_manage::KeySet;
     use solana_client::rpc_client::RpcClient;
     use solana_did_method::{
@@ -36,7 +38,7 @@ mod tests {
     const PROG_NAME: &str = "solana_did_method";
 
     /// Setup the test validator with predefined properties
-    pub fn setup_validator() -> SolDidResult<(TestValidator, Keypair, Pubkey)> {
+    fn setup_validator() -> SolDidResult<(TestValidator, Keypair, Pubkey)> {
         // Extend environment variable to include our program location
         std::env::set_var("BPF_OUT_DIR", PROG_PATH);
         // Instantiate the test validator
@@ -88,6 +90,16 @@ mod tests {
     }
 
     #[test]
+    fn test_basic_test_chain_pass() -> SolDidResult<()> {
+        let (test_validator, payer, _program_pk) = clean_ledger_setup_validator()?;
+        let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
+        let vchain = mchain.version();
+        assert_eq!(vchain.major, 1);
+        assert_eq!(vchain.minor, 10);
+        Ok(())
+    }
+
+    #[test]
     fn test_pasta_inception_two_controllers_pass() -> SolDidResult<()> {
         // Setup faux keypair for management
         let count = 2i8;
@@ -109,6 +121,7 @@ mod tests {
 
         // Get the RpcClient
         let connection = test_validator.get_rpc_client();
+
         //     // Create a PDA for our DID
         //     let digest_bytes = pasta_did_incp.prefix_digest();
         //     let (pda_key, bump) = gen_pda_pk(&digest_bytes, &program_pk);

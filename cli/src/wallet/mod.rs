@@ -83,10 +83,10 @@ impl Wallet {
         keyset: &dyn KeySet,
         threshold: u64,
         chain: Option<&dyn Chain>,
-    ) -> SolDidResult<(String, Vec<u8>)> {
-        let (keys, prefix, digest) = Keys::incept_keys(chain, keyset, threshold)?;
+    ) -> SolDidResult<(String, String, Vec<u8>)> {
+        let (keys, signature, prefix, digest) = Keys::incept_keys(chain, keyset, threshold)?;
         self.add_keys(keys)?;
-        Ok((prefix, digest))
+        Ok((signature, prefix, digest))
     }
     /// Rotate a DID
     /// Takes
@@ -111,6 +111,15 @@ impl Wallet {
         // Get the prefix Keys
         match self.keys.iter_mut().find(|k| k.prefix == keyprefix) {
             Some(k) => k.rotate_keys(keyset, new_next_set, threshold, chain),
+            None => Err(SolDidError::KeySetIncoherence),
+        }
+    }
+
+    /// Returns keyset Keys for prefix
+    pub fn keys_for(&self, prefix: &String) -> SolDidResult<&Keys> {
+        // Get the prefix Keys
+        match self.keys.iter().find(|k| &k.prefix == prefix) {
+            Some(k) => Ok(k),
             None => Err(SolDidError::KeySetIncoherence),
         }
     }
@@ -205,7 +214,7 @@ impl Keys {
         chain: Option<&dyn Chain>,
         key_set: &dyn KeySet,
         threshold: u64,
-    ) -> SolDidResult<(Self, String, Vec<u8>)> {
+    ) -> SolDidResult<(Self, String, String, Vec<u8>)> {
         // Create an inception event
         let icp_event = inception(key_set, threshold)?;
         // Optionally store on chain
@@ -247,7 +256,7 @@ impl Keys {
         Ok((
             Keys {
                 dirty: true,
-                prefix,
+                prefix: prefix.clone(),
                 threshold,
                 keysets_current,
                 keysets_next,
@@ -255,6 +264,7 @@ impl Keys {
                 chain_events: chain_vec,
             },
             signature,
+            prefix,
             icp_event.get_digest().digest,
         ))
     }
@@ -422,7 +432,7 @@ mod wallet_tests {
     use crate::pkey_wrap::PastaKeySet;
 
     #[test]
-    fn base_wallet_create_test_pass() -> SolDidResult<()> {
+    fn test_base_wallet_create_pass() -> SolDidResult<()> {
         let w = init_wallet()?;
         assert!(w.prefixes.is_empty());
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
@@ -430,7 +440,7 @@ mod wallet_tests {
     }
 
     #[test]
-    fn base_load_existing_pass() -> SolDidResult<()> {
+    fn test_base_load_existing_pass() -> SolDidResult<()> {
         let _ = init_wallet()?;
         let w = init_wallet()?;
         assert!(w.prefixes.is_empty());
@@ -439,29 +449,33 @@ mod wallet_tests {
     }
 
     #[test]
-    fn inception_pasta_keys_test_pass() -> SolDidResult<()> {
+    fn test_inception_pasta_keys_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
+        assert!(w.keys.is_empty());
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let (prefix, digest) = w.new_did(&kset1, threshold, None)?;
-        assert_eq!("sol_did_signature".to_string(), prefix);
+        let (signature, prefix, digest) = w.new_did(&kset1, threshold, None)?;
+        assert_eq!("sol_did_signature".to_string(), signature);
         assert!(!digest.is_empty());
+        let k = w.keys_for(&prefix)?;
+        assert_eq!(&prefix, k.prefix());
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
+        assert_eq!(w.keys.len(), 1);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
 
     #[test]
-    fn rotation_pasta_keys_test_pass() -> SolDidResult<()> {
+    fn test_rotation_pasta_keys_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let _prefix = w.new_did(&kset1, threshold, None)?;
+        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         // Target prefix we want to rotation
