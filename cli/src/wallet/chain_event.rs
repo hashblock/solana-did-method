@@ -4,11 +4,15 @@ use crate::errors::{SolDidError, SolDidResult};
 
 use super::{wallet_enums::KeyType, Key};
 use borsh::{BorshDeserialize, BorshSerialize};
-use hbkr_rs::{event::Event, event_message::EventMessage, said_event::SaidEvent, Prefix};
+use hbkr_rs::{
+    event::Event, event_message::EventMessage, said_event::SaidEvent, EventTypeTag, Prefix,
+    Typeable,
+};
 use std::collections::HashMap;
 
-#[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug, Default)]
 pub enum ChainEventType {
+    #[default]
     Inception,
     Rotation,
     DelegatedInception,
@@ -28,9 +32,15 @@ impl ChainEventType {
     }
 }
 
-impl Default for ChainEventType {
-    fn default() -> Self {
-        ChainEventType::Inception
+impl From<EventTypeTag> for ChainEventType {
+    fn from(ett: EventTypeTag) -> Self {
+        match ett {
+            EventTypeTag::Icp => ChainEventType::Inception,
+            EventTypeTag::Rot => ChainEventType::Rotation,
+            EventTypeTag::Ixn | EventTypeTag::Dip | EventTypeTag::Drt | EventTypeTag::Rct => {
+                todo!()
+            }
+        }
     }
 }
 
@@ -70,7 +80,7 @@ impl From<&EventMessage<SaidEvent<Event>>> for ChainEvent {
         let mut ce = ChainEvent::default();
         ce.km_sn = event.event.get_sn();
         ce.km_digest = event.get_digest().to_str();
-        // TODO: Get event type from event
+        ce.event_type = ChainEventType::from(event.event.get_type());
         ce
     }
 }

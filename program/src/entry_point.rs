@@ -25,7 +25,6 @@ pub fn entry_point(
 
 #[cfg(feature = "test-bpf")]
 #[cfg(test)]
-
 mod test {
 
     use crate::{
@@ -140,8 +139,6 @@ mod test {
         let result = banks_client
             .process_transaction_with_preflight(transaction)
             .await;
-
-        assert_matches!(result, Ok(()));
 
         let account_res = banks_client
             .get_account_data_with_borsh::<SDMDid>(pda_key)

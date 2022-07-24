@@ -1,6 +1,8 @@
 //! Chain trait definition
 
-use hbkr_rs::{event::Event, event_message::EventMessage, said_event::SaidEvent};
+use hbkr_rs::{
+    event::Event, event_message::EventMessage, key_manage::Publickey, said_event::SaidEvent,
+};
 
 use crate::errors::SolDidResult;
 
@@ -14,7 +16,7 @@ pub trait Chain {
         event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature>;
     /// Rotation instruction put on the chain
-    fn rotation_inst_fn(
+    fn rotation_inst(
         &self,
         event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature>;
@@ -22,4 +24,6 @@ pub trait Chain {
     fn inst_signer(&self) -> DidSigner;
     /// Get the chain URL in use
     fn url(&self) -> &String;
+    /// Get the program_id Pubkey
+    fn program_id(&self) -> Publickey;
 }

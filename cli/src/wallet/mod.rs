@@ -83,10 +83,10 @@ impl Wallet {
         keyset: &dyn KeySet,
         threshold: u64,
         chain: Option<&dyn Chain>,
-    ) -> SolDidResult<String> {
-        let (keys, prefix) = Keys::incept_keys(chain, keyset, threshold)?;
+    ) -> SolDidResult<(String, Vec<u8>)> {
+        let (keys, prefix, digest) = Keys::incept_keys(chain, keyset, threshold)?;
         self.add_keys(keys)?;
-        Ok(prefix)
+        Ok((prefix, digest))
     }
     /// Rotate a DID
     /// Takes
@@ -95,6 +95,7 @@ impl Wallet {
     ///     Optional vector of private keys to use as the next rotation
     ///     Optional new threshold to set for keyset
     ///     Optional chain to commit to
+    /// Returns Transaction Signature and Rotation digest
     pub fn rotate_did(
         &mut self,
         keyprefix: String,
@@ -102,7 +103,7 @@ impl Wallet {
         new_next_set: Option<Vec<Privatekey>>,
         threshold: Option<u64>,
         chain: Option<&dyn Chain>,
-    ) -> SolDidResult<()> {
+    ) -> SolDidResult<(String, Vec<u8>)> {
         // Validate keyset is barren
         if !keyset.is_barren() {
             return Err(SolDidError::KeySetIncoherence);
@@ -204,7 +205,7 @@ impl Keys {
         chain: Option<&dyn Chain>,
         key_set: &dyn KeySet,
         threshold: u64,
-    ) -> SolDidResult<(Self, String)> {
+    ) -> SolDidResult<(Self, String, Vec<u8>)> {
         // Create an inception event
         let icp_event = inception(key_set, threshold)?;
         // Optionally store on chain
@@ -254,6 +255,7 @@ impl Keys {
                 chain_events: chain_vec,
             },
             signature,
+            icp_event.get_digest().digest,
         ))
     }
 
@@ -274,7 +276,7 @@ impl Keys {
         new_next_set: Option<Vec<Privatekey>>,
         threshold: Option<u64>,
         chain: Option<&dyn Chain>,
-    ) -> SolDidResult<()> {
+    ) -> SolDidResult<(String, Vec<u8>)> {
         // Validate state
         if self.chain_events.len() == 0 {
             return Err(SolDidError::RotationIncoherence);
@@ -315,7 +317,7 @@ impl Keys {
         )?;
         // Optionally store on chain
         let signature = match chain {
-            Some(chain) => chain.rotation_inst_fn(&rot_event)?,
+            Some(chain) => chain.rotation_inst(&rot_event)?,
             None => "sol_did_signature".to_string(),
         };
         // Repopulate our keysets
@@ -326,7 +328,6 @@ impl Keys {
         self.dirty = true;
         // Create the chain event
         let mut chain_event = ChainEvent::from(&rot_event);
-        chain_event.event_type = ChainEventType::Rotation;
         chain_event.km_keytype = keytype;
         chain_event.did_signature = signature.clone();
         // Capture key states
@@ -337,8 +338,9 @@ impl Keys {
         chain_event
             .keysets
             .insert(KeyBlock::NEXT, self.keysets_next.clone());
+        self.chain_events.push(chain_event);
 
-        Ok(())
+        Ok((signature, rot_event.get_digest().digest))
     }
 
     /// Read keys for wallet from path
@@ -443,8 +445,9 @@ mod wallet_tests {
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let prefix = w.new_did(&kset1, threshold, None)?;
+        let (prefix, digest) = w.new_did(&kset1, threshold, None)?;
         assert_eq!("sol_did_signature".to_string(), prefix);
+        assert!(!digest.is_empty());
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
@@ -469,6 +472,7 @@ mod wallet_tests {
         let mut barren_ks = PastaKeySet::new_empty();
         let _ = w.rotate_did(prefix.clone(), &mut barren_ks, None, None, None)?;
         // Observe
+        println!("wallet \n{:?}\n", w);
         let rot_keys = w.keys.first().unwrap();
         let rot_prefix = rot_keys.prefix();
         assert_eq!(rot_prefix, &prefix);
