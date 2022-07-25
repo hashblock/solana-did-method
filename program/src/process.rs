@@ -31,6 +31,8 @@ fn check_account_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pro
     Ok(())
 }
 
+/// Inception event creates and initiates a DID PDA and
+/// stores the active public keys
 fn sdm_inception(
     accounts: &[AccountInfo],
     program_id: &Pubkey,

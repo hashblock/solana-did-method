@@ -1656,6 +1656,8 @@ checksum = "db0d4cf898abf0081f964436dc980e96670a0f36863e4b83aaacdb65c9d7ccc3"
 [[package]]
 name = "hbkr-rs"
 version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2cfa80211c34be70333841cc8154db4f4ccf0f3d4c7b45ad237bdc7f07b20e17"
 dependencies = [
  "base64 0.13.0",
  "blake3",

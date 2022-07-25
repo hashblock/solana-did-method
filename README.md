@@ -1,4 +1,8 @@
 
+# solana-did-method
+
+**WORK IN PROGRESS --- BARELY FUNCTIONAL AND MISSING MUCH TO BE DONE**
+
 # Building
 
 ## **1. Install rustc, cargo and rustfmt.**
@@ -53,13 +57,6 @@ $ cargo build
 ```
 
 ## **4. Testing**
-
-**Run the bpf test suite:**
-This runs unit tests for the Solana program (smart-contract) found in program/src/entry_point.rs. This uses a stripped down version of the solana runtime so not all features may be present
-
-```bash
-$ cargo test-bpf -- --test-threads=1 --nocapture
-```
 
 **Run the non-bpf test suite:**
 This will start a local solana validator node (`solana-test-validator`)and run through tests in `src/main.rs`

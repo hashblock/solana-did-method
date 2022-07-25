@@ -491,7 +491,6 @@ mod wallet_tests {
         let mut barren_ks = PastaKeySet::new_empty();
         let _ = w.rotate_did(prefix.clone(), &mut barren_ks, None, None, None)?;
         // Observe
-        println!("wallet \n{:?}\n", w);
         let rot_keys = w.keys.first().unwrap();
         let rot_prefix = rot_keys.prefix();
         assert_eq!(rot_prefix, &prefix);
