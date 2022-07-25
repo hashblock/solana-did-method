@@ -43,6 +43,7 @@ impl PastaKeySet {
 }
 
 impl KeySet for PastaKeySet {
+    /// is_barren returns true if there are no keys in the keyset
     fn is_barren(&self) -> bool {
         self.barren
     }
@@ -56,6 +57,7 @@ impl KeySet for PastaKeySet {
             .iter()
             .map(|s| PastaKP::from_base58_string(s).unwrap())
             .collect::<Vec<PastaKP>>();
+        self.barren = false
     }
     fn rotate(&mut self, new_next: Option<Vec<Privatekey>>) -> (Vec<Privatekey>, Vec<Privatekey>) {
         self.current = self.next.clone();
@@ -106,7 +108,7 @@ impl KeySet for PastaKeySet {
 }
 
 #[cfg(test)]
-mod tests {
+mod pasta_key_tests {
     use crate::errors::SolDidResult;
 
     use super::*;
@@ -116,6 +118,48 @@ mod tests {
         let count = 2i8;
         let kset1 = PastaKeySet::new_for(count);
         assert!(!kset1.is_barren());
+        assert_eq!(kset1.key_type(), Basic::PASTA);
+        assert_eq!(kset1.current_private_keys().len(), 2);
+        assert_eq!(kset1.current_public_keys().len(), 2);
+        assert_eq!(kset1.next_private_keys().len(), 2);
+        assert_eq!(kset1.next_public_keys().len(), 2);
+        Ok(())
+    }
+    #[test]
+    fn test_empty_with_pasta_pass() -> SolDidResult<()> {
+        let kset1 = PastaKeySet::new_empty();
+        assert!(kset1.is_barren());
+        assert_eq!(kset1.key_type(), Basic::PASTA);
+        assert_eq!(kset1.current_private_keys().len(), 0);
+        assert_eq!(kset1.current_public_keys().len(), 0);
+        assert_eq!(kset1.next_private_keys().len(), 0);
+        assert_eq!(kset1.next_public_keys().len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn test_from_wallet_key_pass() -> SolDidResult<()> {
+        let current = [
+            "BoYfHgWQmEWndXRikjxS8HDVCRma8yScMRTLEE33RjBK".to_string(),
+            "5axEqp1kauUVNF5DS17oGooiESoTf58iph1gSSJ7FBfW".to_string(),
+        ]
+        .map(|s| s)
+        .to_vec();
+        let next = [
+            "FReJayG8gxwupDsYfwo6ZDfNjvWXdfgNhWganZZpWn8a".to_string(),
+            "8ceJbBeXg6dDjyU2GYZRk9TKoDGHFG4CnYn174CZ3i7E".to_string(),
+        ]
+        .map(|s| s)
+        .to_vec();
+        // let kset1 = keyset_generator(&current, &next)?;
+        let mut kset1 = PastaKeySet::new_empty();
+        kset1.from(current, next);
+        assert!(!kset1.is_barren());
+        assert_eq!(kset1.key_type(), Basic::PASTA);
+        assert_eq!(kset1.current_private_keys().len(), 2);
+        assert_eq!(kset1.current_public_keys().len(), 2);
+        assert_eq!(kset1.next_private_keys().len(), 2);
+        assert_eq!(kset1.next_public_keys().len(), 2);
         Ok(())
     }
 }

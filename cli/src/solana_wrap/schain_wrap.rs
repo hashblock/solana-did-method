@@ -24,13 +24,14 @@ use solana_did_method::{
 use solana_sdk::{
     commitment_config::CommitmentConfig,
     ed25519_instruction,
-    instruction::{AccountMeta, Instruction},
+    instruction::{AccountMeta, CompiledInstruction, Instruction},
     message::Message,
     pubkey::{Pubkey, PUBKEY_BYTES},
     signature::{read_keypair_file, Keypair, Signature},
     signer::Signer,
     transaction::Transaction,
 };
+use solana_transaction_status::UiTransactionEncoding;
 
 pub struct SolanaChain {
     rpc_url: String,
@@ -96,6 +97,29 @@ impl SolanaChain {
             .unwrap();
         Ok(self.rpc_client.send_and_confirm_transaction(&transaction)?)
     }
+    /// Fetches and decodes a transactions instruction data
+    pub fn inception_instructions_from_transaction(
+        &self,
+        signature: &String,
+    ) -> SolDidResult<Vec<CompiledInstruction>> {
+        let signature = Signature::from_str(signature).unwrap();
+        let tx_post = self
+            .rpc_client
+            .get_transaction(&signature, UiTransactionEncoding::Base64);
+        if tx_post.is_ok() {
+            let dc = tx_post.unwrap().transaction.transaction.decode();
+            match dc {
+                Some(tx) => Ok([
+                    tx.message.instructions()[0].clone(),
+                    tx.message.instructions()[1].clone(),
+                ]
+                .to_vec()),
+                None => Err(SolDidError::DecodeTransactionError),
+            }
+        } else {
+            Err(SolDidError::GetTransactionError)
+        }
+    }
 }
 
 /// Default implementation for SolanaChain
@@ -128,29 +152,6 @@ impl Debug for SolanaChain {
             .finish()
     }
 }
-// /// Fetches and decodes a transactions instruction data
-// pub fn instruction_from_transaction(
-//     connection: &RpcClient,
-//     signature: &Signature,
-// ) -> SolKeriResult<SolKeriInstruction> {
-//     let tx_post = connection.get_transaction(&signature, UiTransactionEncoding::Base64);
-//     if tx_post.is_ok() {
-//         let dc = tx_post.unwrap().transaction.transaction.decode();
-//         // println!("{:?}", dc);
-//         match dc {
-//             Some(tx) => {
-//                 println!("Proof instruction {:?}", tx.message.instructions[0]);
-//                 println!("Program instruction {:?}", tx.message.instructions[1]);
-//                 Ok(SolKeriInstruction::try_from_slice(
-//                     &tx.message.instructions[1].data,
-//                 )?)
-//             }
-//             None => Err(SolKeriCliError::DecodeTransactionError),
-//         }
-//     } else {
-//         Err(SolKeriCliError::GetTransactionError)
-//     }
-// }
 
 /// Calculate the size of the DID account state data size
 /// based on number of keys being managed
@@ -178,11 +179,6 @@ impl Chain for SolanaChain {
         let digest_bytes = event_msg.get_digest().digest;
         let prefix = event_msg.event.get_prefix().to_str();
         let (pda_key, bump) = self.safe_pda_from_digest(&prefix, &digest_bytes)?;
-        // Account does not exist
-        println!(
-            "Created PDA (pubkey) {:?} bump {} for `did:solana:{}`",
-            pda_key, bump, prefix
-        );
         // Now we want to create two (2) instructions:
         // 1. The ed25519 signature verification on the serialized message
         let verify_instruction = ed25519_instruction::new_ed25519_instruction(
@@ -211,17 +207,14 @@ impl Chain for SolanaChain {
             bump,
             keys,
         };
-        println!("\nInception data {:?}", did_account);
-        println!("\nSize for inception structure {}", data_size);
         let rent_exemption_amount = self
             .rpc_client
             .get_minimum_balance_for_rent_exemption(data_size)?;
-        println!("\nPDA Rent Exemption {}", rent_exemption_amount);
+
         let init = InitializeDidAccount {
             rent: 5 * rent_exemption_amount,
             storage: data_size as u64,
         };
-        println!("Submitting Solana-Keri Inception Instruction");
 
         let accounts = &[
             AccountMeta::new(self.signer.pubkey(), true),

@@ -50,8 +50,8 @@ pub enum SolDidError {
     StdError(#[from] Box<dyn std::error::Error>),
     #[error("ED25519 Signature Error")]
     EDError(#[from] SignatureError),
-    // #[error("Serde Error")]
-    // SerdeError(#[from] serde_json::Error),
+    #[error("Base 58 decoding error")]
+    Bse58Error(#[from] bs58::decode::Error),
 }
 
 pub type SolDidResult<T> = std::result::Result<T, SolDidError>;

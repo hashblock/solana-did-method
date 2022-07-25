@@ -1,11 +1,12 @@
 #[cfg(test)]
 mod tests {
+    use borsh::BorshDeserialize;
     use cli::{
         errors::SolDidResult, pkey_wrap::PastaKeySet, solana_wrap::schain_wrap::SolanaChain,
         wallet::init_wallet,
     };
     use hbkr_rs::key_manage::KeySet;
-    use solana_did_method::id;
+    use solana_did_method::{id, instruction::SDMInstruction};
     use solana_rpc::rpc::JsonRpcConfig;
     use solana_sdk::{
         // ed25519_instruction,
@@ -20,6 +21,8 @@ mod tests {
         // time::Duration,
         path::PathBuf,
         str::FromStr,
+        thread::sleep,
+        time::Duration,
     };
 
     /// Location/Name of ProgramTestGenesis ledger
@@ -75,9 +78,8 @@ mod tests {
 
     #[test]
     fn test_pasta_inception_pass() -> SolDidResult<()> {
-        println!("Starting local validator node");
+        // Get the test validator running
         let (test_validator, payer, _program_pk) = clean_ledger_setup_validator()?;
-
         // Get the SolanaChain setup
         let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
         // Initialize an empty wallet
@@ -90,22 +92,23 @@ mod tests {
         assert!(!kset1.is_barren());
         // Capture our programs log statements
         // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
-        solana_logger::setup_with_default("solana_runtime::message=debug");
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
 
         let result = wallet.new_did(&kset1, threshold, Some(&mchain));
         if result.is_err() {
-            println!("Failed inception test");
+            println!("Failed inception");
+        } else {
+            let (signature, _, _) = result?;
+            sleep(Duration::from_secs(20));
+            let sdata = mchain.inception_instructions_from_transaction(&signature);
+            if sdata.is_ok() {
+                let sdata = sdata?;
+                assert_eq!(sdata.len(), 2);
+                let sdm_inst = SDMInstruction::try_from_slice(&sdata[1].data)?;
+                println!("Incpepted: {:?}", sdm_inst);
+            }
         }
-        let (signature, prefix, _digest) = result?;
-        println!("Sig {} for prefix {}", signature, prefix);
         fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
-
-        //     println!("Delay 20s for block completion. Should use websocket monitoring");
-        //     sleep(Duration::from_secs(20));
-        //     println!(
-        //         "{:?}",
-        //         instruction_from_transaction(&connection, &signature)
-        //     );
         Ok(())
     }
 }

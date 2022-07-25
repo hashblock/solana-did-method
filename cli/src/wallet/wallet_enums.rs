@@ -20,7 +20,7 @@ pub enum KeyType {
 
 impl Default for KeyType {
     fn default() -> Self {
-        KeyType::ED25519
+        KeyType::PASTA
     }
 }
 
