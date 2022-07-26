@@ -15,7 +15,7 @@ pub struct PastaKeySet {
 }
 
 impl PastaKeySet {
-    /// Create a KeySet for count (1-255) current next KeyPairs
+    /// Create a KeySet for count (1-127) current next KeyPairs
     pub fn new_for(count: i8) -> Self {
         let mut current = Vec::<PastaKP>::new();
         let mut next = Vec::<PastaKP>::new();

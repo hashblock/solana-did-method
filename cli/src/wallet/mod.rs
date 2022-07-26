@@ -15,6 +15,7 @@ use hbkr_rs::{
     inception,
     key_manage::{KeySet, PrivKey, Privatekey},
     rotation,
+    said::SelfAddressingPrefix,
     said_event::SaidEvent,
     Prefix,
 };
@@ -24,6 +25,7 @@ use std::{
     env, fs,
     io::Write,
     path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use self::wallet_enums::{KeyState, KeyType};
@@ -332,7 +334,11 @@ impl Keys {
         )?;
         // Optionally store on chain
         let signature = match chain {
-            Some(chain) => chain.rotation_inst(&rot_event)?,
+            Some(chain) => {
+                let incp_ce = self.chain_events.first().unwrap();
+                let incp_digest = SelfAddressingPrefix::from_str(&incp_ce.km_digest)?;
+                chain.rotation_inst(&incp_digest.digest, barren_ks, &rot_event)?
+            }
             None => "sol_did_signature".to_string(),
         };
         // Repopulate our keysets

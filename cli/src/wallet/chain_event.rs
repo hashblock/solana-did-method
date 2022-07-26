@@ -18,7 +18,7 @@ pub enum ChainEventType {
     DelegatedInception,
     DelegatedRotation,
     Revoked,
-    Decommisioined,
+    Decommisioned,
 }
 
 impl ChainEventType {

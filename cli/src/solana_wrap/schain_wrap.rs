@@ -18,7 +18,7 @@ use hbkr_rs::{
 use solana_client::rpc_client::RpcClient;
 use solana_did_method::{
     id,
-    instruction::{InceptionDID, InitializeDidAccount, SDMInstruction, SMDKeyType},
+    instruction::{DIDInception, InitializeDidAccount, SDMInstruction, SMDKeyType},
     state::SDMDidState,
 };
 use solana_sdk::{
@@ -82,11 +82,25 @@ impl SolanaChain {
         let (pda_pk, bump) = Pubkey::find_program_address(&[prefix_digest], &self.program_id);
         let check_acc = self.rpc_client.get_account(&pda_pk);
         if check_acc.is_ok() {
-            Err(SolDidError::DIDExists(prefix.to_string()))
+            Err(SolDidError::DIDAccountExists(prefix.to_string()))
         } else {
             Ok((pda_pk, bump))
         }
     }
+
+    /// Get the prefix as 32 byte array
+    fn prefix_bytes(event_msg: &EventMessage<SaidEvent<Event>>) -> [u8; 32] {
+        // Get prefix in bytes
+        let mut prefix_bytes = [0u8; 32];
+        match event_msg.event.get_prefix() {
+            hbkr_rs::identifier_prefix::IdentifierPrefix::SelfAddressing(sa) => {
+                prefix_bytes.copy_from_slice(&sa.digest)
+            }
+            _ => unreachable!(),
+        }
+        prefix_bytes
+    }
+
     /// Submits a transaction with programs instruction
     fn submit_transaction(&self, instructions: Vec<Instruction>) -> SolDidResult<Signature> {
         let mut transaction =
@@ -166,6 +180,8 @@ pub fn get_inception_datasize(key_count: usize) -> usize {
         .saturating_add(PUBKEY_BYTES * key_count) // Vector of keys size
 }
 
+const DID_INCEPT_RENT_MULTIPLIER: u64 = 10;
+
 /// Chain trait implementation
 impl Chain for SolanaChain {
     /// Inception
@@ -185,37 +201,39 @@ impl Chain for SolanaChain {
             &ed25519_dalek::Keypair::from_bytes(&self.signer.to_bytes())?,
             &event_msg.serialize()?,
         );
-        // 2. The inception of the DID for our program to the active keys (inception)
-        // Instruction 1 - Add ledger signature verification on our inception data
+        // 2. The inception instruction of the DID for program
+        // Convert pasta keys to Solana Pubkey for serialization
         let keys = key_set
             .current_public_keys()
             .iter()
             .map(|k| Pubkey::from_str(&k.as_base58_string()).unwrap())
             .collect::<Vec<Pubkey>>();
-        let mut prefix_bytes = [0u8; 32];
-        match event_msg.event.get_prefix() {
-            hbkr_rs::identifier_prefix::IdentifierPrefix::SelfAddressing(sa) => {
-                prefix_bytes.copy_from_slice(&sa.digest)
-            }
-            _ => unreachable!(),
+        if keys.len() == 0 {
+            return Err(SolDidError::DIDInvalidInceptionZeroKeys);
         }
 
+        // Get prefix in bytes
+        let prefix_bytes = SolanaChain::prefix_bytes(event_msg);
+        // Setup DID inception data
         let data_size = get_inception_datasize(keys.len());
-        let did_account = InceptionDID {
+        let did_account = DIDInception {
             keytype: SMDKeyType::PASTA,
             prefix: prefix_bytes,
             bump,
             keys,
         };
+
+        // Get rent calc
         let rent_exemption_amount = self
             .rpc_client
             .get_minimum_balance_for_rent_exemption(data_size)?;
-
+        // TODO - We are paying more in rent than the size of the data which
+        // may grow due to rotation variations
         let init = InitializeDidAccount {
-            rent: 5 * rent_exemption_amount,
+            rent: DID_INCEPT_RENT_MULTIPLIER * rent_exemption_amount,
             storage: data_size as u64,
         };
-
+        // Accounts to pass to instruction
         let accounts = &[
             AccountMeta::new(self.signer.pubkey(), true),
             AccountMeta::new(pda_key, false),
@@ -241,9 +259,37 @@ impl Chain for SolanaChain {
     /// Rotation
     fn rotation_inst(
         &self,
-        _event_msg: &EventMessage<SaidEvent<Event>>,
+        inception_digest: &Vec<u8>,
+        key_set: &dyn KeySet,
+        event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature> {
-        todo!()
+        // Validate we have a did
+        let (pda_key, _bump) = Pubkey::find_program_address(&[inception_digest], &self.program_id);
+        let check_acc = self.rpc_client.get_account(&pda_key);
+        if check_acc.is_err() {
+            return Err(SolDidError::DIDAccountNotExists(pda_key.to_string()));
+        }
+        let _rotation_digest = event_msg.get_digest().digest;
+        // Now we want to create two (2) instructions:
+        // 1. The ed25519 signature verification on the serialized message
+        let verify_instruction = ed25519_instruction::new_ed25519_instruction(
+            &ed25519_dalek::Keypair::from_bytes(&self.signer.to_bytes())?,
+            &event_msg.serialize()?,
+        );
+        // 2. The rotation instruction of the DID for program
+
+        // Convert pasta keys to Solana Pubkey for serialization
+        let keys = key_set
+            .current_public_keys()
+            .iter()
+            .map(|k| Pubkey::from_str(&k.as_base58_string()).unwrap())
+            .collect::<Vec<Pubkey>>();
+        if keys.len() == 0 {
+            return Err(SolDidError::DIDInvalidRotationUseDecommision);
+        }
+        // Get prefix in bytes
+        let _prefix_bytes = SolanaChain::prefix_bytes(event_msg);
+        Ok("Foo".to_string())
     }
 
     fn inst_signer(&self) -> DidSigner {

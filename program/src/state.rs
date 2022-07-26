@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::pubkey::Pubkey;
 
 pub use crate::error::SDMProgramError;
-use crate::instruction::{InceptionDID, SMDKeyType};
+use crate::instruction::{DIDInception, SMDKeyType};
 
 /// Indicates the current version supported
 /// If different from persist state, a copy on
@@ -47,7 +47,7 @@ impl SDMDid {
     }
     /// Assumes the account has not been initialized yet
     /// If so, returns default state or otherwise throws error
-    pub fn unpack_unitialized(data: &[u8], with: InceptionDID) -> Result<Self, SDMProgramError> {
+    pub fn unpack_unitialized(data: &[u8], with: DIDInception) -> Result<Self, SDMProgramError> {
         let is_initialized = data[0] != 0;
         if is_initialized {
             Err(SDMProgramError::DidAlreadyInitialized)

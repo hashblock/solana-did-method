@@ -1,7 +1,7 @@
 //! Program core processing module
 
 use crate::{
-    instruction::{InceptionDID, InitializeDidAccount, SDMInstruction},
+    instruction::{DIDInception, InitializeDidAccount, SDMInstruction},
     state::{SDMDid, SDMProgramError},
 };
 
@@ -37,7 +37,7 @@ fn sdm_inception(
     accounts: &[AccountInfo],
     program_id: &Pubkey,
     init: InitializeDidAccount,
-    did: InceptionDID,
+    did: DIDInception,
 ) -> ProgramResult {
     let account_iter = &mut accounts.iter();
     // Signer and payer of PDA for DID

@@ -36,8 +36,14 @@ pub enum SolDidError {
     DecodeTransactionError,
     #[error("Invalid did string {0}")]
     InvalidDidString(String),
-    #[error("DID already exists {0}")]
-    DIDExists(String),
+    #[error("DID account already exists {0}")]
+    DIDAccountExists(String),
+    #[error("Called Inception with 0 current keys.")]
+    DIDInvalidInceptionZeroKeys,
+    #[error("DID account {0} does not exists")]
+    DIDAccountNotExists(String),
+    #[error("Called Rotation with 0 current keys. Should use Decommision instead")]
+    DIDInvalidRotationUseDecommision,
     // Add custom errors here
     // Add library/crate errors here
     #[error("Solana RpcError")]

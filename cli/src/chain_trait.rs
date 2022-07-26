@@ -22,6 +22,8 @@ pub trait Chain: std::fmt::Debug {
     /// Rotation instruction put on the chain
     fn rotation_inst(
         &self,
+        inception_digest: &Vec<u8>,
+        key_set: &dyn KeySet,
         event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature>;
     /// Get the signer bytes

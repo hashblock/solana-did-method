@@ -13,10 +13,17 @@ pub enum SMDKeyType {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
-pub struct InceptionDID {
+pub struct DIDInception {
     pub keytype: SMDKeyType,
     pub prefix: [u8; 32],
     pub bump: u8,
+    pub keys: Vec<Pubkey>,
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
+pub struct DIDRotation {
+    pub keytype: SMDKeyType,
+    pub prefix: [u8; 32],
     pub keys: Vec<Pubkey>,
 }
 
@@ -46,7 +53,7 @@ pub enum SDMInstruction {
     /// The inception data includes
     /// 0. InceptionDID
     ///
-    SDMInception(InitializeDidAccount, InceptionDID),
+    SDMInception(InitializeDidAccount, DIDInception),
 }
 
 impl SDMInstruction {
