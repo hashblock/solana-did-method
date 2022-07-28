@@ -3,10 +3,10 @@
 use std::io::BufWriter;
 
 use borsh::{BorshDeserialize, BorshSerialize};
-use solana_program::pubkey::Pubkey;
+use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 
 pub use crate::error::SDMProgramError;
-use crate::instruction::{DIDInception, SMDKeyType};
+use crate::instruction::{DIDInception, DIDRotation, SMDKeyType};
 
 /// Indicates the current version supported
 /// If different from persist state, a copy on
@@ -37,6 +37,23 @@ pub struct SDMDid {
 }
 
 impl SDMDid {
+    /// Verifies that keytypes and prefix match
+    pub fn verify_inbound(
+        &self,
+        keytype: SMDKeyType,
+        prefix: [u8; 32],
+    ) -> Result<(), SDMProgramError> {
+        if keytype == self.did_doc.keytype && prefix == self.did_doc.prefix {
+            Ok(())
+        } else {
+            Err(SDMProgramError::InvalidDidReference)
+        }
+    }
+    /// Rotate the active keys from the instruction data
+    pub fn rotate_with(&mut self, with: DIDRotation) -> Result<(), SDMProgramError> {
+        self.did_doc.keys = with.keys;
+        Ok(())
+    }
     /// Sets the initialization flag
     pub fn set_initialized(&mut self) {
         self.initialized = true
@@ -78,7 +95,7 @@ impl SDMDid {
             version[1] = data[2];
             let version = u16::from_le_bytes(version);
             if version == CURRENT_DATA_VERSION {
-                let current = SDMDid::try_from_slice(data).unwrap();
+                let current = try_from_slice_unchecked::<SDMDid>(data).unwrap();
                 Ok(current)
             } else {
                 Err(SDMProgramError::DidDataVersionInvalid)

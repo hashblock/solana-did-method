@@ -122,6 +122,10 @@ mod tests {
         let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
         // Initialize an empty wallet
         let mut wallet = init_wallet()?;
+        // Capture our programs log statements
+        // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
+
         // Incept keys
         let result = build_and_run_inception(&mchain, &mut wallet, 2i8, 1u64);
         if result.is_err() {
@@ -129,16 +133,19 @@ mod tests {
         } else {
             let (_signature, prefix, _) = result?;
             let mut barren_ks = PastaKeySet::new_empty();
-            let (signature, _digest) =
-                wallet.rotate_did(prefix.clone(), &mut barren_ks, None, None, Some(&mchain))?;
-            println!("ROT SIG {}", signature);
+            sleep(Duration::from_secs(5));
+
+            let result =
+                wallet.rotate_did(prefix.clone(), &mut barren_ks, None, None, Some(&mchain));
+            assert!(result.is_ok());
+            // println!("ROT SIG {}", signature);
             // sleep(Duration::from_secs(20));
             // let sdata = mchain.inception_instructions_from_transaction(&signature);
             // if sdata.is_ok() {
             //     let sdata = sdata?;
             //     assert_eq!(sdata.len(), 2);
             //     let sdm_inst = SDMInstruction::try_from_slice(&sdata[1].data)?;
-            //     println!("Incpepted: {:?}", sdm_inst);
+            //     println!("Incepted: {:?}", sdm_inst);
             // }
         }
         fs::remove_dir_all(wallet.full_path().parent().unwrap())?;

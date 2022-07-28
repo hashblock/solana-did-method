@@ -18,7 +18,7 @@ use hbkr_rs::{
 use solana_client::rpc_client::RpcClient;
 use solana_did_method::{
     id,
-    instruction::{DIDInception, InitializeDidAccount, SDMInstruction, SMDKeyType},
+    instruction::{DIDInception, DIDRotation, InitializeDidAccount, SDMInstruction, SMDKeyType},
     state::SDMDidState,
 };
 use solana_sdk::{
@@ -215,7 +215,7 @@ impl Chain for SolanaChain {
         // Get prefix in bytes
         let prefix_bytes = SolanaChain::prefix_bytes(event_msg);
         // Setup DID inception data
-        let data_size = get_inception_datasize(keys.len());
+        let data_size = get_inception_datasize(keys.len()) * DID_INCEPT_RENT_MULTIPLIER as usize;
         let did_account = DIDInception {
             keytype: SMDKeyType::PASTA,
             prefix: prefix_bytes,
@@ -227,6 +227,7 @@ impl Chain for SolanaChain {
         let rent_exemption_amount = self
             .rpc_client
             .get_minimum_balance_for_rent_exemption(data_size)?;
+        println!("Lamports {} for {} bytes", rent_exemption_amount, data_size);
         // TODO - We are paying more in rent than the size of the data which
         // may grow due to rotation variations
         let init = InitializeDidAccount {
@@ -277,7 +278,6 @@ impl Chain for SolanaChain {
             &event_msg.serialize()?,
         );
         // 2. The rotation instruction of the DID for program
-
         // Convert pasta keys to Solana Pubkey for serialization
         let keys = key_set
             .current_public_keys()
@@ -287,9 +287,32 @@ impl Chain for SolanaChain {
         if keys.len() == 0 {
             return Err(SolDidError::DIDInvalidRotationUseDecommision);
         }
-        // Get prefix in bytes
-        let _prefix_bytes = SolanaChain::prefix_bytes(event_msg);
-        Ok("Foo".to_string())
+        // Create the instruction data
+        let did_rotation = DIDRotation {
+            keytype: SMDKeyType::PASTA,
+            prefix: SolanaChain::prefix_bytes(event_msg),
+            keys,
+        };
+        // Accounts to pass to instruction
+        let accounts = &[
+            AccountMeta::new(self.signer.pubkey(), true),
+            AccountMeta::new(pda_key, false),
+        ];
+        let txn = self.submit_transaction(
+            [
+                verify_instruction,
+                Instruction::new_with_borsh(
+                    self.program_id,
+                    &SDMInstruction::SDMRotation(did_rotation),
+                    accounts.to_vec(),
+                ),
+            ]
+            .to_vec(),
+        );
+        println!("ROT Txn {:?}", txn);
+        assert!(txn.is_ok());
+        let signature = txn.unwrap();
+        Ok(signature.to_string())
     }
 
     fn inst_signer(&self) -> DidSigner {

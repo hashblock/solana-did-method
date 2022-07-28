@@ -1,7 +1,7 @@
 //! Program core processing module
 
 use crate::{
-    instruction::{DIDInception, InitializeDidAccount, SDMInstruction},
+    instruction::{DIDInception, DIDRotation, InitializeDidAccount, SDMInstruction},
     state::{SDMDid, SDMProgramError},
 };
 
@@ -75,6 +75,24 @@ fn sdm_inception(
     Ok(())
 }
 
+/// Rotation verifies the prefix and then stores a new set of public keys
+fn sdm_rotation(accounts: &[AccountInfo], _program_id: &Pubkey, did: DIDRotation) -> ProgramResult {
+    let account_iter = &mut accounts.iter();
+    // Signer and payer of PDA for DID
+    let authority_account = next_account_info(account_iter)?;
+    if !authority_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    // Get the did proposed account
+    let pda = next_account_info(account_iter)?;
+    let mut my_data = pda.try_borrow_mut_data()?;
+    let mut did_doc = SDMDid::unpack(&my_data)?;
+    did_doc.verify_inbound(did.keytype, did.prefix)?;
+    did_doc.rotate_with(did)?;
+    did_doc.pack(*my_data)?;
+    Ok(())
+}
+
 /// Main processing entry point dispatches to specific
 /// instruction handlers
 pub fn process(
@@ -92,5 +110,6 @@ pub fn process(
         SDMInstruction::SDMInception(init, did_content) => {
             sdm_inception(accounts, program_id, init, did_content)
         }
+        SDMInstruction::SDMRotation(input) => sdm_rotation(accounts, program_id, input),
     }
 }

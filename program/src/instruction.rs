@@ -6,7 +6,7 @@ use solana_program::{
     borsh::try_from_slice_unchecked, program_error::ProgramError, pubkey::Pubkey,
 };
 
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
+#[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug, PartialEq)]
 pub enum SMDKeyType {
     Ed25519,
     PASTA,
@@ -51,18 +51,30 @@ pub enum SDMInstruction {
     /// 1. `[writeable]` The new DID PDA
     ///
     /// The inception data includes
-    /// 0. InceptionDID
+    /// 0. InceptionDidAccount details information about the PDA creation
+    /// 1. DIDInception is the payload containing the DID active keys
     ///
     SDMInception(InitializeDidAccount, DIDInception),
+    /// Rotate DID public keys
+    /// Accounts expected by this instruction
+    /// 0. `[writeable, signable]` Authorizing account
+    /// 1. `[writeable]` The DID PDA
+    ///
+    /// The rotation data includes
+    /// 0. DIDRotation with verifying information and new keys
+    SDMRotation(DIDRotation),
 }
 
 impl SDMInstruction {
     /// Unpack inbound buffer to associated Instruction
     /// The expected format for input is a Borsh serialized vector
     pub fn unpack(input: &[u8]) -> Result<Self, ProgramError> {
+        // let payload = SDMInstruction::try_from_slice(input)?;
         let payload = try_from_slice_unchecked::<SDMInstruction>(input).unwrap();
+
         match payload {
             SDMInstruction::SDMInception(_, _) => Ok(payload),
+            SDMInstruction::SDMRotation(_) => Ok(payload),
         }
     }
 }
