@@ -230,7 +230,6 @@ impl Chain for SolanaChain {
         let rent_exemption_amount = self
             .rpc_client
             .get_minimum_balance_for_rent_exemption(data_size)?;
-        println!("Lamports {} for {} bytes", rent_exemption_amount, data_size);
         // TODO - We are paying more in rent than the size of the data which
         // may grow due to rotation variations
         let init = InitializeDidAccount {
