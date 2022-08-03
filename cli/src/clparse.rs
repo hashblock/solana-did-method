@@ -18,8 +18,8 @@ pub fn command_line() -> Command<'static> {
                 .value_parser(value_parser!(PathBuf))
                 .help("Use wallet configuration [default: /.solwall/wallet.bor]"),
         )
-        .subcommand(Command::new("incept").about("Create a wallet keyset and did"))
         .subcommand(Command::new("list").about("List a wallet's keysets"))
+        .subcommand(Command::new("incept").about("Create a wallet keyset and did"))
         .subcommand(Command::new("rotate").about("Rotate a wallet's keyset"))
 }
 
@@ -27,5 +27,6 @@ pub fn command_line() -> Command<'static> {
 fn test_command_pass() {
     // use super::*;
     let mut cmd = command_line();
+
     cmd.print_help().unwrap();
 }

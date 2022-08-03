@@ -6,7 +6,7 @@ use borsh::{BorshDeserialize, BorshSerialize};
 use solana_program::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 
 pub use crate::error::SDMProgramError;
-use crate::instruction::{DIDInception, DIDRotation, SMDKeyType};
+use crate::instruction::{DIDDecommission, DIDInception, DIDRotation, SMDKeyType};
 
 /// Indicates the current version supported
 /// If different from persist state, a copy on
@@ -17,6 +17,7 @@ const CURRENT_DATA_VERSION: u16 = 1;
 pub enum SDMDidState {
     Inception,
     Rotated,
+    Decommissioned,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
@@ -52,16 +53,20 @@ impl SDMDid {
     /// Rotate the active keys from the instruction data
     pub fn rotate_with(&mut self, with: DIDRotation) -> Result<(), SDMProgramError> {
         self.did_doc.keys = with.keys;
+        self.did_doc.state = SDMDidState::Rotated;
+        Ok(())
+    }
+    /// Rotate the active keys from the instruction data
+    pub fn decommission_with(&mut self, with: DIDDecommission) -> Result<(), SDMProgramError> {
+        self.did_doc.keys = with.keys;
+        self.did_doc.state = SDMDidState::Decommissioned;
         Ok(())
     }
     /// Sets the initialization flag
     pub fn set_initialized(&mut self) {
         self.initialized = true
     }
-    /// Sets the initialization flag
-    pub fn flip_version(&mut self) {
-        self.version = 20
-    }
+
     /// Assumes the account has not been initialized yet
     /// If so, returns default state or otherwise throws error
     pub fn unpack_unitialized(data: &[u8], with: DIDInception) -> Result<Self, SDMProgramError> {

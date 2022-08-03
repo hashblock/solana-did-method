@@ -1,7 +1,9 @@
 //! Program core processing module
 
 use crate::{
-    instruction::{DIDInception, DIDRotation, InitializeDidAccount, SDMInstruction},
+    instruction::{
+        DIDDecommission, DIDInception, DIDRotation, InitializeDidAccount, SDMInstruction,
+    },
     state::{SDMDid, SDMProgramError},
 };
 
@@ -93,6 +95,28 @@ fn sdm_rotation(accounts: &[AccountInfo], _program_id: &Pubkey, did: DIDRotation
     Ok(())
 }
 
+/// Decommission verifies the prefix and then stores a new set of public keys
+fn sdm_decommission(
+    accounts: &[AccountInfo],
+    _program_id: &Pubkey,
+    did: DIDDecommission,
+) -> ProgramResult {
+    let account_iter = &mut accounts.iter();
+    // Signer and payer of PDA for DID
+    let authority_account = next_account_info(account_iter)?;
+    if !authority_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    // Get the did proposed account
+    let pda = next_account_info(account_iter)?;
+    let mut my_data = pda.try_borrow_mut_data()?;
+    let mut did_doc = SDMDid::unpack(&my_data)?;
+    did_doc.verify_inbound(did.keytype, did.prefix)?;
+    did_doc.decommission_with(did)?;
+    did_doc.pack(*my_data)?;
+    Ok(())
+}
+
 /// Main processing entry point dispatches to specific
 /// instruction handlers
 pub fn process(
@@ -111,5 +135,6 @@ pub fn process(
             sdm_inception(accounts, program_id, init, did_content)
         }
         SDMInstruction::SDMRotation(input) => sdm_rotation(accounts, program_id, input),
+        SDMInstruction::SDMDecommission(input) => sdm_decommission(accounts, program_id, input),
     }
 }

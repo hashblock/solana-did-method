@@ -28,8 +28,10 @@ pub enum SolDidError {
     ThresholdError(usize),
     #[error("Can not rotate keys: No inception or previous rotation found")]
     RotationIncoherence,
-    #[error("Can not rotate keys: KeySet has been revoked or decommisioned")]
+    #[error("Can not rotate keys: KeySet has been revoked or decommissioned")]
     RotationIncompatible,
+    #[error("Attempt to rotate with empty next keyset. Use decommission instead")]
+    RotationToEmptyError,
     #[error("Failed getting transaction")]
     GetTransactionError,
     #[error("Failed decoding transaction")]

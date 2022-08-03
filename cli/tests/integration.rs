@@ -138,15 +138,33 @@ mod tests {
             let result =
                 wallet.rotate_did(prefix.clone(), &mut barren_ks, None, None, Some(&mchain));
             assert!(result.is_ok());
-            // println!("ROT SIG {}", signature);
-            // sleep(Duration::from_secs(20));
-            // let sdata = mchain.inception_instructions_from_transaction(&signature);
-            // if sdata.is_ok() {
-            //     let sdata = sdata?;
-            //     assert_eq!(sdata.len(), 2);
-            //     let sdm_inst = SDMInstruction::try_from_slice(&sdata[1].data)?;
-            //     println!("Incepted: {:?}", sdm_inst);
-            // }
+        }
+        fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_pasta_decommission_pass() -> SolDidResult<()> {
+        // Get the test validator running
+        let (test_validator, payer, _program_pk) = clean_ledger_setup_validator()?;
+        // Get the SolanaChain setup
+        let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
+        // Initialize an empty wallet
+        let mut wallet = init_wallet()?;
+        // Capture our programs log statements
+        // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
+
+        // Incept keys
+        let result = build_and_run_inception(&mchain, &mut wallet, 2i8, 1u64);
+        if result.is_err() {
+            println!("Failed inception");
+        } else {
+            let (_signature, prefix, _) = result?;
+            let mut barren_ks = PastaKeySet::new_empty();
+            sleep(Duration::from_secs(5));
+            let result = wallet.decommission_did(prefix.clone(), &mut barren_ks, Some(&mchain));
+            assert!(result.is_ok());
         }
         fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
         Ok(())

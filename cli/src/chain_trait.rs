@@ -22,7 +22,14 @@ pub trait Chain: std::fmt::Debug {
     /// Rotation instruction put on the chain
     fn rotation_inst(
         &self,
-        inception_digest: &Vec<u8>,
+        rotation_digest: &Vec<u8>,
+        key_set: &dyn KeySet,
+        event_msg: &EventMessage<SaidEvent<Event>>,
+    ) -> SolDidResult<ChainSignature>;
+    /// Decommission instruction put on the chain
+    fn decommission_inst(
+        &self,
+        decommission_digest: &Vec<u8>,
         key_set: &dyn KeySet,
         event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature>;

@@ -112,15 +112,44 @@ impl Wallet {
     ) -> SolDidResult<(String, Vec<u8>)> {
         // Validate keyset is barren
         if !keyset.is_barren() {
-            return Err(SolDidError::KeySetIncoherence);
-        }
-        // Get the prefix Keys
-        match self.keys.iter_mut().find(|k| k.prefix == keyprefix) {
-            Some(k) => k.rotate_keys(keyset, new_next_set, threshold, chain),
-            None => Err(SolDidError::KeySetIncoherence),
+            Err(SolDidError::KeySetIncoherence)
+        } else {
+            // Get the prefix Keys
+            match self.keys.iter_mut().find(|k| k.prefix == keyprefix) {
+                Some(k) => {
+                    let result = k.rotate_keys(keyset, new_next_set, threshold, chain);
+                    if result.is_ok() {
+                        self.save()?;
+                    }
+                    result
+                }
+                None => Err(SolDidError::KeySetIncoherence),
+            }
         }
     }
 
+    /// Decommission a did by rotating in an empty vector of Privatekeys
+    pub fn decommission_did(
+        &mut self,
+        keyprefix: String,
+        keyset: &mut dyn KeySet,
+        chain: Option<&dyn Chain>,
+    ) -> SolDidResult<(String, Vec<u8>)> {
+        if !keyset.is_barren() {
+            Err(SolDidError::KeySetIncoherence)
+        } else {
+            match self.keys.iter_mut().find(|k| k.prefix == keyprefix) {
+                Some(k) => {
+                    let result = k.decommission_keys(keyset, chain);
+                    if result.is_ok() {
+                        self.save()?;
+                    }
+                    result
+                }
+                None => Err(SolDidError::KeySetIncoherence),
+            }
+        }
+    }
     /// Returns keyset Keys for prefix
     pub fn keys_for(&self, prefix: &String) -> SolDidResult<&Keys> {
         // Get the prefix Keys
@@ -213,6 +242,14 @@ pub struct Keys {
 }
 
 impl Keys {
+    /// Get the keys chain events
+    pub fn chain_events(&self) -> &Vec<ChainEvent> {
+        &self.chain_events
+    }
+    /// Get number of events in chain VDR
+    pub fn chain_event_len(&self) -> usize {
+        self.chain_events().len()
+    }
     /// Accepts a native keyset this has been incepted
     /// distributes current (Incepted) and next (NextRotation) keys
     /// and stores the chain event initiating this function call
@@ -296,72 +333,135 @@ impl Keys {
     ) -> SolDidResult<(String, Vec<u8>)> {
         // Validate state
         if self.chain_events.len() == 0 {
-            return Err(SolDidError::RotationIncoherence);
-        }
-        // Validate ability to rotate
-        let last_event = self.chain_events.last().unwrap();
-        if !ChainEventType::can_rotate(last_event.event_type) {
-            return Err(SolDidError::RotationIncompatible);
-        }
-        // Re-hydrate the keystate
-        barren_ks.from(
-            last_event
-                .get_keys_for(KeyBlock::CURRENT)?
-                .iter()
-                .map(|k| k.key.clone())
-                .collect::<Vec<String>>(),
-            last_event
-                .get_keys_for(KeyBlock::NEXT)?
-                .iter()
-                .map(|k| k.key.clone())
-                .collect::<Vec<String>>(),
-        );
-        // Default rotation of keys should create equivalent count of keysets for next
-        let (ncurr, nnext) = barren_ks.rotate(new_next_set);
-        // Rotate event
-        let rot_event = rotation(
-            &self.prefix,
-            &last_event.km_digest,
-            last_event.km_sn + 1,
-            barren_ks,
-            match threshold {
-                Some(t) => {
-                    self.threshold = t;
-                    t
+            Err(SolDidError::RotationIncoherence)
+        } else {
+            let new_next_clone = new_next_set.clone();
+            if new_next_set.is_some() && new_next_set.unwrap().len() == 0 {
+                Err(SolDidError::RotationToEmptyError)
+            } else {
+                // Validate ability to rotate
+                let last_event = self.chain_events.last().unwrap();
+                if !ChainEventType::can_rotate(last_event.event_type) {
+                    return Err(SolDidError::RotationIncompatible);
                 }
-                None => self.threshold,
-            },
-        )?;
-        // Optionally store on chain
-        let signature = match chain {
-            Some(chain) => {
-                let incp_ce = self.chain_events.first().unwrap();
-                let incp_digest = SelfAddressingPrefix::from_str(&incp_ce.km_digest)?;
-                chain.rotation_inst(&incp_digest.digest, barren_ks, &rot_event)?
-            }
-            None => "sol_did_signature".to_string(),
-        };
-        // Repopulate our keysets
-        let keytype = KeyType::from(barren_ks.key_type());
-        let last_curr = self.keysets_current.clone();
-        self.keysets_current = Keys::to_keys_from_private(KeyState::Rotated, keytype, &ncurr);
-        self.keysets_next = Keys::to_keys_from_private(KeyState::NextRotation, keytype, &nnext);
-        self.dirty = true;
-        // Create the chain event
-        let mut chain_event = ChainEvent::from(&rot_event);
-        chain_event.km_keytype = keytype;
-        chain_event.did_signature = signature.clone();
-        // Capture key states
-        chain_event.keysets.insert(KeyBlock::PAST, last_curr);
-        chain_event
-            .keysets
-            .insert(KeyBlock::CURRENT, self.keysets_current.clone());
-        chain_event
-            .keysets
-            .insert(KeyBlock::NEXT, self.keysets_next.clone());
-        self.chain_events.push(chain_event);
+                // Re-hydrate the keystate
+                barren_ks.from(
+                    last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?,
+                    last_event.get_keys_as_strings_for(KeyBlock::NEXT)?, // last_event
+                );
+                // Default rotation of keys should create equivalent count of keysets for next
+                let (ncurr, nnext) = barren_ks.rotate(new_next_clone);
+                // Rotate event
+                let rot_event = rotation(
+                    &self.prefix,
+                    &last_event.km_digest,
+                    last_event.km_sn + 1,
+                    barren_ks,
+                    match threshold {
+                        Some(t) => {
+                            self.threshold = t;
+                            t
+                        }
+                        None => self.threshold,
+                    },
+                )?;
+                // Optionally store on chain
+                let signature = match chain {
+                    Some(chain) => {
+                        let incp_ce = self.chain_events.first().unwrap();
+                        let incp_digest = SelfAddressingPrefix::from_str(&incp_ce.km_digest)?;
+                        chain.rotation_inst(&incp_digest.digest, barren_ks, &rot_event)?
+                    }
+                    None => "sol_did_signature".to_string(),
+                };
+                // Repopulate our keysets
+                let keytype = KeyType::from(barren_ks.key_type());
+                let last_curr = self.keysets_current.clone();
+                self.keysets_current =
+                    Keys::to_keys_from_private(KeyState::Rotated, keytype, &ncurr);
+                self.keysets_next =
+                    Keys::to_keys_from_private(KeyState::NextRotation, keytype, &nnext);
+                self.dirty = true;
+                // Create the chain event
+                let mut chain_event = ChainEvent::from(&rot_event);
+                chain_event.km_keytype = keytype;
+                chain_event.did_signature = signature.clone();
+                // Capture key states
+                chain_event.keysets.insert(KeyBlock::PAST, last_curr);
+                chain_event
+                    .keysets
+                    .insert(KeyBlock::CURRENT, self.keysets_current.clone());
+                chain_event
+                    .keysets
+                    .insert(KeyBlock::NEXT, self.keysets_next.clone());
+                self.chain_events.push(chain_event);
 
-        Ok((signature, rot_event.get_digest().digest))
+                Ok((signature, rot_event.get_digest().digest))
+            }
+        }
+    }
+
+    /// Decommission this key set
+    fn decommission_keys(
+        &mut self,
+        barren_ks: &mut dyn KeySet,
+        chain: Option<&dyn Chain>,
+    ) -> SolDidResult<(String, Vec<u8>)> {
+        if self.chain_events.len() == 0 {
+            Err(SolDidError::RotationIncoherence)
+        } else {
+            let last_event = self.chain_events.last().unwrap();
+            if !ChainEventType::can_rotate(last_event.event_type) {
+                return Err(SolDidError::RotationIncompatible);
+            }
+            // Re-hydrate the keystate
+            barren_ks.from(
+                last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?,
+                last_event.get_keys_as_strings_for(KeyBlock::NEXT)?, // last_event
+            );
+            // Default rotation of keys should create equivalent count of keysets for next
+            let (ncurr, nnext) = barren_ks.rotate(Some(Vec::<Privatekey>::new()));
+            // Rotate event
+            let rot_event = rotation(
+                &self.prefix,
+                &last_event.km_digest,
+                last_event.km_sn + 1,
+                barren_ks,
+                0,
+            )?;
+            // Optionally store on chain
+            let signature = match chain {
+                Some(chain) => {
+                    let incp_ce = self.chain_events.first().unwrap();
+                    let incp_digest = SelfAddressingPrefix::from_str(&incp_ce.km_digest)?;
+                    chain.rotation_inst(&incp_digest.digest, barren_ks, &rot_event)?
+                }
+                None => "sol_did_signature".to_string(),
+            };
+            let keytype = KeyType::from(barren_ks.key_type());
+            let last_curr = self.keysets_current.clone();
+            self.keysets_current =
+                Keys::to_keys_from_private(KeyState::Decommisioined, keytype, &ncurr);
+            self.keysets_next =
+                Keys::to_keys_from_private(KeyState::Decommisioined, keytype, &nnext);
+            self.dirty = true;
+
+            // Set decommissioned chain event
+            let mut chain_event = ChainEvent::from(&rot_event);
+            chain_event.km_keytype = keytype;
+            chain_event.did_signature = signature.clone();
+            chain_event.event_type = ChainEventType::Decommissioned;
+            // Capture key states
+            chain_event.keysets.insert(KeyBlock::PAST, last_curr);
+            chain_event
+                .keysets
+                .insert(KeyBlock::CURRENT, self.keysets_current.clone());
+            chain_event
+                .keysets
+                .insert(KeyBlock::NEXT, self.keysets_next.clone());
+            self.chain_events.push(chain_event);
+            Ok((signature, rot_event.get_digest().digest))
+        }
     }
 
     /// Read keys for wallet from path
@@ -443,6 +543,7 @@ mod wallet_tests {
     use crate::pkey_wrap::PastaKeySet;
 
     #[test]
+    /// Test wallet simple creation
     fn test_base_wallet_create_pass() -> SolDidResult<()> {
         let w = init_wallet()?;
         assert!(w.prefixes.is_empty());
@@ -451,6 +552,7 @@ mod wallet_tests {
     }
 
     #[test]
+    /// Test wallet simple load
     fn test_base_load_existing_pass() -> SolDidResult<()> {
         let _ = init_wallet()?;
         let w = init_wallet()?;
@@ -460,6 +562,7 @@ mod wallet_tests {
     }
 
     #[test]
+    /// Test an inception event
     fn test_inception_pasta_keys_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
@@ -480,6 +583,7 @@ mod wallet_tests {
     }
 
     #[test]
+    /// Test rotation event to default keys
     fn test_rotation_pasta_keys_pass() -> SolDidResult<()> {
         let mut w = init_wallet()?;
         assert!(w.prefixes.is_empty());
@@ -504,6 +608,87 @@ mod wallet_tests {
             new_first.keysets_next.first().unwrap().key,
             rot_keys.keysets_current.first().unwrap().key
         );
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
+        Ok(())
+    }
+
+    #[test]
+    /// Test rotation to different keys than default
+    fn test_rotation_to_different_pasta_keys_pass() -> SolDidResult<()> {
+        let mut w = init_wallet()?;
+        assert!(w.prefixes.is_empty());
+        let count = 2i8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
+        let new_first = w.keys.first().unwrap().prefix().to_string();
+        assert_eq!(w.keys_for(&new_first)?.chain_event_len(), 1);
+        // Rotate
+        let mut w = init_wallet()?;
+        let mut barren_ks = PastaKeySet::new_empty();
+        let kset2 = PastaKeySet::new_for(count);
+        let new_next_set = kset2.current_private_keys();
+        let _ = w.rotate_did(
+            new_first.clone(),
+            &mut barren_ks,
+            Some(new_next_set.clone()),
+            None,
+            None,
+        )?;
+        let chain_events = w.keys_for(&new_first)?.chain_events();
+        assert_eq!(chain_events.len(), 2);
+        let next_privates = chain_events
+            .last()
+            .unwrap()
+            .get_keys_as_private_for(KeyBlock::NEXT)?;
+        assert_eq!(new_next_set, next_privates);
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
+        Ok(())
+    }
+
+    #[test]
+    /// Rotate to empty vector of next keeys fails
+    /// as this is a decommission event
+    fn test_rotate_to_empty_vector_fail() -> SolDidResult<()> {
+        let mut w = init_wallet()?;
+        assert!(w.prefixes.is_empty());
+        let count = 2i8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
+        let new_first = w.keys.first().unwrap().prefix().to_string();
+        assert_eq!(w.keys_for(&new_first)?.chain_event_len(), 1);
+        // Rotate to empty
+        let mut w = init_wallet()?;
+        let mut barren_ks = PastaKeySet::new_empty();
+        let new_next_set = Vec::<Privatekey>::new();
+        let result = w.rotate_did(
+            new_first.clone(),
+            &mut barren_ks,
+            Some(new_next_set.clone()),
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_decommission_pass() -> SolDidResult<()> {
+        let mut w = init_wallet()?;
+        assert!(w.prefixes.is_empty());
+        let count = 2i8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
+        let new_first = w.keys.first().unwrap().prefix().to_string();
+        assert_eq!(w.keys_for(&new_first)?.chain_event_len(), 1);
+        // Decommission keys
+        let mut w = init_wallet()?;
+        let mut barren_ks = PastaKeySet::new_empty();
+        let result = w.decommission_did(new_first.clone(), &mut barren_ks, None);
+        assert!(result.is_ok());
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }

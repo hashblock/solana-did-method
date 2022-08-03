@@ -5,8 +5,8 @@ use crate::errors::{SolDidError, SolDidResult};
 use super::{wallet_enums::KeyType, Key};
 use borsh::{BorshDeserialize, BorshSerialize};
 use hbkr_rs::{
-    event::Event, event_message::EventMessage, said_event::SaidEvent, EventTypeTag, Prefix,
-    Typeable,
+    event::Event, event_message::EventMessage, key_manage::Privatekey, said_event::SaidEvent,
+    EventTypeTag, Prefix, Typeable,
 };
 use std::collections::HashMap;
 
@@ -18,7 +18,7 @@ pub enum ChainEventType {
     DelegatedInception,
     DelegatedRotation,
     Revoked,
-    Decommisioned,
+    Decommissioned,
 }
 
 impl ChainEventType {
@@ -69,6 +69,35 @@ impl ChainEvent {
     pub fn get_keys_for(&self, block_type: KeyBlock) -> SolDidResult<&Vec<Key>> {
         if self.keysets.contains_key(&block_type) {
             Ok(self.keysets.get(&block_type).unwrap())
+        } else {
+            Err(SolDidError::KeySetIncoherence)
+        }
+    }
+    /// Gets a particular keyblock and return as Vec<Privatekey>
+    pub fn get_keys_as_private_for(&self, block_type: KeyBlock) -> SolDidResult<Vec<Privatekey>> {
+        if self.keysets.contains_key(&block_type) {
+            Ok(self
+                .keysets
+                .get(&block_type)
+                .unwrap()
+                .iter()
+                .map(|k| Privatekey::from(k.key.clone()))
+                .collect())
+        } else {
+            Err(SolDidError::KeySetIncoherence)
+        }
+    }
+
+    /// Gets a particular keyblock and return as Vec<String>
+    pub fn get_keys_as_strings_for(&self, block_type: KeyBlock) -> SolDidResult<Vec<String>> {
+        if self.keysets.contains_key(&block_type) {
+            Ok(self
+                .keysets
+                .get(&block_type)
+                .unwrap()
+                .iter()
+                .map(|k| k.key.clone())
+                .collect())
         } else {
             Err(SolDidError::KeySetIncoherence)
         }

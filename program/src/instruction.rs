@@ -27,6 +27,13 @@ pub struct DIDRotation {
     pub keys: Vec<Pubkey>,
 }
 
+#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, PartialEq)]
+pub struct DIDDecommission {
+    pub keytype: SMDKeyType,
+    pub prefix: [u8; 32],
+    pub keys: Vec<Pubkey>,
+}
+
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]
 pub struct InitializeDidAccount {
     pub rent: u64,
@@ -63,6 +70,14 @@ pub enum SDMInstruction {
     /// The rotation data includes
     /// 0. DIDRotation with verifying information and new keys
     SDMRotation(DIDRotation),
+    /// Decommission DID public keys
+    /// Accounts expected by this instruction
+    /// 0. `[writeable, signable]` Authorizing account
+    /// 1. `[writeable]` The DID PDA
+    ///
+    /// The decommission data includes
+    /// 0. DIDDecommission with verifying information and new keys
+    SDMDecommission(DIDDecommission),
 }
 
 impl SDMInstruction {
@@ -75,6 +90,7 @@ impl SDMInstruction {
         match payload {
             SDMInstruction::SDMInception(_, _) => Ok(payload),
             SDMInstruction::SDMRotation(_) => Ok(payload),
+            SDMInstruction::SDMDecommission(_) => Ok(payload),
         }
     }
 }
