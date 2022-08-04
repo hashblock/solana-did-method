@@ -31,7 +31,6 @@ pub struct DIDRotation {
 pub struct DIDDecommission {
     pub keytype: SMDKeyType,
     pub prefix: [u8; 32],
-    pub keys: Vec<Pubkey>,
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug, PartialEq)]

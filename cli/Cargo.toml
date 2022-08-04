@@ -1,6 +1,6 @@
 [package]
 name = "cli"
-version = "0.3.0"
+version = "0.4.0"
 edition = "2021"
 description = "solana-did-method file system wallet CLI"
 
@@ -23,7 +23,7 @@ semver = "1.0.12"
 serde_json = "1.0.81"
 solana-client = "1.10.32"
 solana-cli-config = "1.10.32"
-solana-did-method = {path="../program",version="0.2.0"}
+solana-did-method = {path="../program",version="0.3.0"}
 solana-sdk = "1.10.32"
 solana-transaction-status = "1.10.32"
 thiserror = "1.0"

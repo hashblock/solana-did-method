@@ -311,7 +311,6 @@ impl Chain for SolanaChain {
             ]
             .to_vec(),
         );
-        println!("ROT Txn {:?}", txn);
         assert!(txn.is_ok());
         let signature = txn.unwrap();
         Ok(signature.to_string())
@@ -321,7 +320,6 @@ impl Chain for SolanaChain {
     fn decommission_inst(
         &self,
         inception_digest: &Vec<u8>,
-        key_set: &dyn KeySet,
         event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature> {
         // Validate we have a did
@@ -337,20 +335,9 @@ impl Chain for SolanaChain {
             &event_msg.serialize()?,
         );
         // 2. The decommission instruction of the DID for program
-        // Convert pasta keys to Solana Pubkey for serialization
-        let keys = key_set
-            .current_public_keys()
-            .iter()
-            .map(|k| Pubkey::from_str(&k.as_base58_string()).unwrap())
-            .collect::<Vec<Pubkey>>();
-        if keys.len() == 0 {
-            return Err(SolDidError::DIDInvalidRotationUseDecommision);
-        }
-        // Create the instruction data
         let did_decomm = DIDDecommission {
             keytype: SMDKeyType::PASTA,
             prefix: SolanaChain::prefix_bytes(event_msg),
-            keys,
         };
         // Accounts to pass to instruction
         let accounts = &[
@@ -368,7 +355,6 @@ impl Chain for SolanaChain {
             ]
             .to_vec(),
         );
-        println!("ROT Txn {:?}", txn);
         assert!(txn.is_ok());
         let signature = txn.unwrap();
         Ok(signature.to_string())

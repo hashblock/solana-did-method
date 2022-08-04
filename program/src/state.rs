@@ -57,8 +57,8 @@ impl SDMDid {
         Ok(())
     }
     /// Rotate the active keys from the instruction data
-    pub fn decommission_with(&mut self, with: DIDDecommission) -> Result<(), SDMProgramError> {
-        self.did_doc.keys = with.keys;
+    pub fn decommission_with(&mut self, _with: DIDDecommission) -> Result<(), SDMProgramError> {
+        self.did_doc.keys = Vec::<Pubkey>::new();
         self.did_doc.state = SDMDidState::Decommissioned;
         Ok(())
     }

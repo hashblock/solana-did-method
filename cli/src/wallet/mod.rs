@@ -235,9 +235,6 @@ pub struct Keys {
     dirty: bool,
     prefix: String,
     threshold: u64,
-    keysets_current: Vec<Key>,
-    keysets_next: Vec<Key>,
-    keysets_past: Vec<Key>,
     chain_events: Vec<ChainEvent>,
 }
 
@@ -289,10 +286,8 @@ impl Keys {
         // Duplicate into chain_event
         chain_event
             .keysets
-            .insert(KeyBlock::CURRENT, keysets_current.clone());
-        chain_event
-            .keysets
-            .insert(KeyBlock::NEXT, keysets_next.clone());
+            .insert(KeyBlock::CURRENT, keysets_current);
+        chain_event.keysets.insert(KeyBlock::NEXT, keysets_next);
         // Create a event store and push chain_event
         let mut chain_vec = Vec::<ChainEvent>::new();
         chain_vec.push(chain_event);
@@ -302,9 +297,6 @@ impl Keys {
                 dirty: true,
                 prefix: prefix.clone(),
                 threshold,
-                keysets_current,
-                keysets_next,
-                keysets_past: Vec::<Key>::new(),
                 chain_events: chain_vec,
             },
             signature,
@@ -345,10 +337,9 @@ impl Keys {
                     return Err(SolDidError::RotationIncompatible);
                 }
                 // Re-hydrate the keystate
-                barren_ks.from(
-                    last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?,
-                    last_event.get_keys_as_strings_for(KeyBlock::NEXT)?, // last_event
-                );
+                let last_current = last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?;
+                let last_next = last_event.get_keys_as_strings_for(KeyBlock::NEXT)?;
+                barren_ks.from(last_current.clone(), last_next);
                 // Default rotation of keys should create equivalent count of keysets for next
                 let (ncurr, nnext) = barren_ks.rotate(new_next_clone);
                 // Rotate event
@@ -374,28 +365,36 @@ impl Keys {
                     }
                     None => "sol_did_signature".to_string(),
                 };
-                // Repopulate our keysets
+                // Create the event keysets
                 let keytype = KeyType::from(barren_ks.key_type());
-                let last_curr = self.keysets_current.clone();
-                self.keysets_current =
-                    Keys::to_keys_from_private(KeyState::Rotated, keytype, &ncurr);
-                self.keysets_next =
-                    Keys::to_keys_from_private(KeyState::NextRotation, keytype, &nnext);
-                self.dirty = true;
                 // Create the chain event
                 let mut chain_event = ChainEvent::from(&rot_event);
                 chain_event.km_keytype = keytype;
                 chain_event.did_signature = signature.clone();
-                // Capture key states
-                chain_event.keysets.insert(KeyBlock::PAST, last_curr);
-                chain_event
-                    .keysets
-                    .insert(KeyBlock::CURRENT, self.keysets_current.clone());
-                chain_event
-                    .keysets
-                    .insert(KeyBlock::NEXT, self.keysets_next.clone());
+                // Build the key state map
+                chain_event.keysets.insert(
+                    KeyBlock::CURRENT,
+                    ncurr
+                        .iter()
+                        .map(|k| Key::new(KeyState::Rotated, keytype, &k.as_base58_string()))
+                        .collect::<Vec<Key>>(),
+                );
+                chain_event.keysets.insert(
+                    KeyBlock::NEXT,
+                    nnext
+                        .iter()
+                        .map(|k| Key::new(KeyState::NextRotation, keytype, &k.as_base58_string()))
+                        .collect::<Vec<Key>>(),
+                );
+                chain_event.keysets.insert(
+                    KeyBlock::PAST,
+                    last_current
+                        .iter()
+                        .map(|s| Key::new(KeyState::RotatedOut, keytype, s))
+                        .collect::<Vec<Key>>(),
+                );
                 self.chain_events.push(chain_event);
-
+                self.dirty = true;
                 Ok((signature, rot_event.get_digest().digest))
             }
         }
@@ -414,14 +413,8 @@ impl Keys {
             if !ChainEventType::can_rotate(last_event.event_type) {
                 return Err(SolDidError::RotationIncompatible);
             }
-            // Re-hydrate the keystate
-            barren_ks.from(
-                last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?,
-                last_event.get_keys_as_strings_for(KeyBlock::NEXT)?, // last_event
-            );
-            // Default rotation of keys should create equivalent count of keysets for next
-            let (ncurr, nnext) = barren_ks.rotate(Some(Vec::<Privatekey>::new()));
-            // Rotate event
+            // Rotate event with empty keyset
+            // TODO: Check that barren is just that
             let rot_event = rotation(
                 &self.prefix,
                 &last_event.km_digest,
@@ -434,17 +427,24 @@ impl Keys {
                 Some(chain) => {
                     let incp_ce = self.chain_events.first().unwrap();
                     let incp_digest = SelfAddressingPrefix::from_str(&incp_ce.km_digest)?;
-                    chain.rotation_inst(&incp_digest.digest, barren_ks, &rot_event)?
+                    chain.decommission_inst(&incp_digest.digest, &rot_event)?
                 }
                 None => "sol_did_signature".to_string(),
             };
             let keytype = KeyType::from(barren_ks.key_type());
-            let last_curr = self.keysets_current.clone();
-            self.keysets_current =
-                Keys::to_keys_from_private(KeyState::Decommisioined, keytype, &ncurr);
-            self.keysets_next =
-                Keys::to_keys_from_private(KeyState::Decommisioined, keytype, &nnext);
-            self.dirty = true;
+            let last_current = last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?;
+            let last_next = last_event.get_keys_as_strings_for(KeyBlock::NEXT)?;
+
+            let mut event_past = last_current
+                .iter()
+                .map(|s| Key::new(KeyState::Decommisioined, keytype, s))
+                .collect::<Vec<Key>>();
+            event_past.extend(
+                last_next
+                    .iter()
+                    .map(|s| Key::new(KeyState::Decommisioined, keytype, s))
+                    .collect::<Vec<Key>>(),
+            );
 
             // Set decommissioned chain event
             let mut chain_event = ChainEvent::from(&rot_event);
@@ -452,14 +452,15 @@ impl Keys {
             chain_event.did_signature = signature.clone();
             chain_event.event_type = ChainEventType::Decommissioned;
             // Capture key states
-            chain_event.keysets.insert(KeyBlock::PAST, last_curr);
+            chain_event.keysets.insert(KeyBlock::PAST, event_past);
             chain_event
                 .keysets
-                .insert(KeyBlock::CURRENT, self.keysets_current.clone());
+                .insert(KeyBlock::CURRENT, Vec::<Key>::new());
             chain_event
                 .keysets
-                .insert(KeyBlock::NEXT, self.keysets_next.clone());
+                .insert(KeyBlock::NEXT, Vec::<Key>::new());
             self.chain_events.push(chain_event);
+            self.dirty = true;
             Ok((signature, rot_event.get_digest().digest))
         }
     }
@@ -604,10 +605,10 @@ mod wallet_tests {
         let rot_keys = w.keys.first().unwrap();
         let rot_prefix = rot_keys.prefix();
         assert_eq!(rot_prefix, &prefix);
-        assert_eq!(
-            new_first.keysets_next.first().unwrap().key,
-            rot_keys.keysets_current.first().unwrap().key
-        );
+        // assert_eq!(
+        //     new_first.keysets_next.first().unwrap().key,
+        //     rot_keys.keysets_current.first().unwrap().key
+        // );
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
