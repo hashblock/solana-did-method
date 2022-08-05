@@ -1,6 +1,7 @@
 //! Wallet for local file management
 
 pub mod chain_event;
+pub mod generic_keys;
 pub mod wallet_enums;
 
 use crate::{
@@ -8,16 +9,12 @@ use crate::{
     errors::{SolDidError, SolDidResult},
 };
 use borsh::{BorshDeserialize, BorshSerialize};
-use chain_event::{ChainEvent, ChainEventType, KeyBlock};
+
 use hbkr_rs::{
     event::Event,
     event_message::EventMessage,
-    inception,
-    key_manage::{KeySet, PrivKey, Privatekey},
-    rotation,
-    said::SelfAddressingPrefix,
+    key_manage::{KeySet, Privatekey},
     said_event::SaidEvent,
-    Prefix,
 };
 
 use std::{
@@ -25,10 +22,9 @@ use std::{
     env, fs,
     io::Write,
     path::{Path, PathBuf},
-    str::FromStr,
 };
 
-use self::wallet_enums::{KeyState, KeyType};
+use self::generic_keys::Keys;
 
 static DEFAULT_WALLET_PATH: &str = "/.solwall";
 static WALLET_CONFIGURATION: &str = "wallet.bor";
@@ -72,7 +68,7 @@ impl Wallet {
     }
     /// Add new managed Keys(et) with name
     fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
-        let check = keysets.prefix.clone();
+        let check = keysets.prefix();
         if self.prefixes.contains(&check) {
             Err(SolDidError::KeysExistError(check))
         } else {
@@ -115,7 +111,7 @@ impl Wallet {
             Err(SolDidError::KeySetIncoherence)
         } else {
             // Get the prefix Keys
-            match self.keys.iter_mut().find(|k| k.prefix == keyprefix) {
+            match self.keys.iter_mut().find(|k| k.prefix() == keyprefix) {
                 Some(k) => {
                     let result = k.rotate_keys(keyset, new_next_set, threshold, chain);
                     if result.is_ok() {
@@ -138,7 +134,7 @@ impl Wallet {
         if !keyset.is_barren() {
             Err(SolDidError::KeySetIncoherence)
         } else {
-            match self.keys.iter_mut().find(|k| k.prefix == keyprefix) {
+            match self.keys.iter_mut().find(|k| k.prefix() == keyprefix) {
                 Some(k) => {
                     let result = k.decommission_keys(keyset, chain);
                     if result.is_ok() {
@@ -153,7 +149,7 @@ impl Wallet {
     /// Returns keyset Keys for prefix
     pub fn keys_for(&self, prefix: &String) -> SolDidResult<&Keys> {
         // Get the prefix Keys
-        match self.keys.iter().find(|k| &k.prefix == prefix) {
+        match self.keys.iter().find(|k| &k.prefix() == prefix) {
             Some(k) => Ok(k),
             None => Err(SolDidError::KeySetIncoherence),
         }
@@ -227,311 +223,6 @@ pub fn load_wallet_from(location: &PathBuf) -> SolDidResult<Wallet> {
     Wallet::read_from_file(wallet_path.to_path_buf())
 }
 
-/// Keys define a named collection of public and private keys
-/// represented as strings
-#[derive(BorshDeserialize, BorshSerialize, Debug, Default)]
-pub struct Keys {
-    #[borsh_skip]
-    dirty: bool,
-    prefix: String,
-    threshold: u64,
-    chain_events: Vec<ChainEvent>,
-}
-
-impl Keys {
-    /// Get the keys chain events
-    pub fn chain_events(&self) -> &Vec<ChainEvent> {
-        &self.chain_events
-    }
-    /// Get number of events in chain VDR
-    pub fn chain_event_len(&self) -> usize {
-        self.chain_events().len()
-    }
-    /// Accepts a native keyset this has been incepted
-    /// distributes current (Incepted) and next (NextRotation) keys
-    /// and stores the chain event initiating this function call
-    fn incept_keys(
-        chain: Option<&dyn Chain>,
-        key_set: &dyn KeySet,
-        threshold: u64,
-    ) -> SolDidResult<(Self, String, String, Vec<u8>)> {
-        // Create an inception event
-        let icp_event = inception(key_set, threshold)?;
-        let prefix = icp_event.event.get_prefix().to_str();
-        // Optionally store on chain
-        let signature = match chain {
-            Some(chain) => chain.inception_inst(key_set, &icp_event)?,
-            None => "sol_did_signature".to_string(),
-        };
-
-        // Covert Type
-        let set_type = KeyType::from(key_set.key_type());
-        // Setup the chain event
-        let mut chain_event = ChainEvent::from(&icp_event);
-
-        chain_event.km_keytype = set_type;
-        chain_event.did_signature = signature.clone();
-
-        // Convert keyset current keys and next keys to Key
-        let keysets_current = Keys::to_keys_from_private(
-            KeyState::Incepted,
-            set_type,
-            &key_set.current_private_keys(),
-        );
-        let keysets_next = Keys::to_keys_from_private(
-            KeyState::NextRotation,
-            set_type,
-            &key_set.next_private_keys(),
-        );
-        // Duplicate into chain_event
-        chain_event
-            .keysets
-            .insert(KeyBlock::CURRENT, keysets_current);
-        chain_event.keysets.insert(KeyBlock::NEXT, keysets_next);
-        // Create a event store and push chain_event
-        let mut chain_vec = Vec::<ChainEvent>::new();
-        chain_vec.push(chain_event);
-        // Return Self
-        Ok((
-            Keys {
-                dirty: true,
-                prefix: prefix.clone(),
-                threshold,
-                chain_events: chain_vec,
-            },
-            signature,
-            prefix,
-            icp_event.get_digest().digest,
-        ))
-    }
-
-    /// Generate Keys from Privatekeys
-    fn to_keys_from_private(state: KeyState, ktype: KeyType, pkeys: &Vec<Privatekey>) -> Vec<Key> {
-        pkeys
-            .iter()
-            .map(|pk| Key::new(state, ktype, &pk.as_base58_string()))
-            .collect::<Vec<Key>>()
-    }
-
-    /// rotate_keys creates a new rotation event and
-    /// optionally commits to blockchain and
-    /// then syncs current state and updates the chainevents
-    fn rotate_keys(
-        &mut self,
-        barren_ks: &mut dyn KeySet,
-        new_next_set: Option<Vec<Privatekey>>,
-        threshold: Option<u64>,
-        chain: Option<&dyn Chain>,
-    ) -> SolDidResult<(String, Vec<u8>)> {
-        // Validate state
-        if self.chain_events.len() == 0 {
-            Err(SolDidError::RotationIncoherence)
-        } else {
-            let new_next_clone = new_next_set.clone();
-            if new_next_set.is_some() && new_next_set.unwrap().len() == 0 {
-                Err(SolDidError::RotationToEmptyError)
-            } else {
-                // Validate ability to rotate
-                let last_event = self.chain_events.last().unwrap();
-                if !ChainEventType::can_rotate(last_event.event_type) {
-                    return Err(SolDidError::RotationIncompatible);
-                }
-                // Re-hydrate the keystate
-                let last_current = last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?;
-                let last_next = last_event.get_keys_as_strings_for(KeyBlock::NEXT)?;
-                barren_ks.from(last_current.clone(), last_next);
-                // Default rotation of keys should create equivalent count of keysets for next
-                let (ncurr, nnext) = barren_ks.rotate(new_next_clone);
-                // Rotate event
-                let rot_event = rotation(
-                    &self.prefix,
-                    &last_event.km_digest,
-                    last_event.km_sn + 1,
-                    barren_ks,
-                    match threshold {
-                        Some(t) => {
-                            self.threshold = t;
-                            t
-                        }
-                        None => self.threshold,
-                    },
-                )?;
-                // Optionally store on chain
-                let signature = match chain {
-                    Some(chain) => {
-                        let incp_ce = self.chain_events.first().unwrap();
-                        let incp_digest = SelfAddressingPrefix::from_str(&incp_ce.km_digest)?;
-                        chain.rotation_inst(&incp_digest.digest, barren_ks, &rot_event)?
-                    }
-                    None => "sol_did_signature".to_string(),
-                };
-                // Create the event keysets
-                let keytype = KeyType::from(barren_ks.key_type());
-                // Create the chain event
-                let mut chain_event = ChainEvent::from(&rot_event);
-                chain_event.km_keytype = keytype;
-                chain_event.did_signature = signature.clone();
-                // Build the key state map
-                chain_event.keysets.insert(
-                    KeyBlock::CURRENT,
-                    ncurr
-                        .iter()
-                        .map(|k| Key::new(KeyState::Rotated, keytype, &k.as_base58_string()))
-                        .collect::<Vec<Key>>(),
-                );
-                chain_event.keysets.insert(
-                    KeyBlock::NEXT,
-                    nnext
-                        .iter()
-                        .map(|k| Key::new(KeyState::NextRotation, keytype, &k.as_base58_string()))
-                        .collect::<Vec<Key>>(),
-                );
-                chain_event.keysets.insert(
-                    KeyBlock::PAST,
-                    last_current
-                        .iter()
-                        .map(|s| Key::new(KeyState::RotatedOut, keytype, s))
-                        .collect::<Vec<Key>>(),
-                );
-                self.chain_events.push(chain_event);
-                self.dirty = true;
-                Ok((signature, rot_event.get_digest().digest))
-            }
-        }
-    }
-
-    /// Decommission this key set
-    fn decommission_keys(
-        &mut self,
-        barren_ks: &mut dyn KeySet,
-        chain: Option<&dyn Chain>,
-    ) -> SolDidResult<(String, Vec<u8>)> {
-        if self.chain_events.len() == 0 {
-            Err(SolDidError::RotationIncoherence)
-        } else {
-            let last_event = self.chain_events.last().unwrap();
-            if !ChainEventType::can_rotate(last_event.event_type) {
-                return Err(SolDidError::RotationIncompatible);
-            }
-            // Rotate event with empty keyset
-            // TODO: Check that barren is just that
-            let rot_event = rotation(
-                &self.prefix,
-                &last_event.km_digest,
-                last_event.km_sn + 1,
-                barren_ks,
-                0,
-            )?;
-            // Optionally store on chain
-            let signature = match chain {
-                Some(chain) => {
-                    let incp_ce = self.chain_events.first().unwrap();
-                    let incp_digest = SelfAddressingPrefix::from_str(&incp_ce.km_digest)?;
-                    chain.decommission_inst(&incp_digest.digest, &rot_event)?
-                }
-                None => "sol_did_signature".to_string(),
-            };
-            let keytype = KeyType::from(barren_ks.key_type());
-            let last_current = last_event.get_keys_as_strings_for(KeyBlock::CURRENT)?;
-            let last_next = last_event.get_keys_as_strings_for(KeyBlock::NEXT)?;
-
-            let mut event_past = last_current
-                .iter()
-                .map(|s| Key::new(KeyState::Decommisioined, keytype, s))
-                .collect::<Vec<Key>>();
-            event_past.extend(
-                last_next
-                    .iter()
-                    .map(|s| Key::new(KeyState::Decommisioined, keytype, s))
-                    .collect::<Vec<Key>>(),
-            );
-
-            // Set decommissioned chain event
-            let mut chain_event = ChainEvent::from(&rot_event);
-            chain_event.km_keytype = keytype;
-            chain_event.did_signature = signature.clone();
-            chain_event.event_type = ChainEventType::Decommissioned;
-            // Capture key states
-            chain_event.keysets.insert(KeyBlock::PAST, event_past);
-            chain_event
-                .keysets
-                .insert(KeyBlock::CURRENT, Vec::<Key>::new());
-            chain_event
-                .keysets
-                .insert(KeyBlock::NEXT, Vec::<Key>::new());
-            self.chain_events.push(chain_event);
-            self.dirty = true;
-            Ok((signature, rot_event.get_digest().digest))
-        }
-    }
-
-    /// Read keys for wallet from path
-    fn load(loc: &mut PathBuf) -> SolDidResult<Keys> {
-        loc.push(KEYS_CONFIGURATION);
-        match loc.exists() {
-            true => {
-                let mut keys = Keys::try_from_slice(&fs::read(loc.clone())?)?;
-                keys.dirty = false;
-                Ok(keys)
-            }
-            false => {
-                return Err(SolDidError::KeyConfigNotFound(
-                    KEYS_CONFIGURATION.to_string(),
-                    loc.to_str().unwrap().to_string(),
-                ))
-            }
-        }
-    }
-
-    /// Write keys to location
-    fn write(&mut self, loc: &PathBuf) -> SolDidResult<()> {
-        let mut rpath = loc.clone();
-        rpath.push(self.prefix.to_string());
-        // If path does not exist, create
-        if !rpath.exists() {
-            fs::create_dir(rpath.clone())?;
-        }
-        rpath.push(KEYS_CONFIGURATION);
-        let mut file = if !rpath.exists() {
-            fs::File::create(rpath)?
-        } else {
-            fs::File::options().write(true).open(rpath)?
-        };
-        if self.dirty {
-            // let mut file = fs::File::create(rpath)?;
-            let wser = self.try_to_vec()?;
-            file.write(&wser)?;
-            self.dirty = false;
-        }
-
-        Ok(())
-    }
-    pub fn prefix(&self) -> &String {
-        &self.prefix
-    }
-}
-
-/// Key represents a keypair by encoding the private
-/// key to a string. The keytype provider knows how
-/// to reconstruct into it's keypair type
-#[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Hash, Eq, PartialEq, PartialOrd)]
-pub struct Key {
-    key_state: KeyState,
-    key_type: KeyType,
-    key: String,
-}
-
-impl Key {
-    /// Create a new Key
-    pub fn new(key_state: KeyState, key_type: KeyType, key: &String) -> Key {
-        Key {
-            key_state,
-            key_type,
-            key: key.clone(),
-        }
-    }
-}
-
 /// Print to json string
 pub fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
     print!("{title}\n{}\n", serde_json::to_string(event).unwrap());
@@ -541,7 +232,7 @@ pub fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
 mod wallet_tests {
 
     use super::*;
-    use crate::pkey_wrap::PastaKeySet;
+    use crate::{pkey_wrap::PastaKeySet, wallet::chain_event::KeyBlock};
 
     #[test]
     /// Test wallet simple creation
@@ -575,7 +266,7 @@ mod wallet_tests {
         assert_eq!("sol_did_signature".to_string(), signature);
         assert!(!digest.is_empty());
         let k = w.keys_for(&prefix)?;
-        assert_eq!(&prefix, k.prefix());
+        assert_eq!(prefix, k.prefix());
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         assert_eq!(w.keys.len(), 1);
@@ -604,7 +295,7 @@ mod wallet_tests {
         // Observe
         let rot_keys = w.keys.first().unwrap();
         let rot_prefix = rot_keys.prefix();
-        assert_eq!(rot_prefix, &prefix);
+        assert_eq!(rot_prefix, prefix);
         // assert_eq!(
         //     new_first.keysets_next.first().unwrap().key,
         //     rot_keys.keysets_current.first().unwrap().key

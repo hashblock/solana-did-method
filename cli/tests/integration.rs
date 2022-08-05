@@ -160,7 +160,7 @@ fn test_pasta_decommission_pass() -> SolDidResult<()> {
         sleep(Duration::from_secs(5));
         // Capture our programs log statements
         // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
-        solana_logger::setup_with_default("solana_runtime::message=debug");
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
         let result = wallet.decommission_did(prefix.clone(), &mut barren_ks, Some(&mchain));
         if result.is_err() {
             println!("Failed decommision");

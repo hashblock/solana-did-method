@@ -2,7 +2,7 @@
 
 use crate::errors::{SolDidError, SolDidResult};
 
-use super::{wallet_enums::KeyType, Key};
+use super::{generic_keys::Key, wallet_enums::KeyType};
 use borsh::{BorshDeserialize, BorshSerialize};
 use hbkr_rs::{
     event::Event, event_message::EventMessage, key_manage::Privatekey, said_event::SaidEvent,
@@ -81,7 +81,7 @@ impl ChainEvent {
                 .get(&block_type)
                 .unwrap()
                 .iter()
-                .map(|k| Privatekey::from(k.key.clone()))
+                .map(|k| Privatekey::from(k.key()))
                 .collect())
         } else {
             Err(SolDidError::KeySetIncoherence)
@@ -96,7 +96,7 @@ impl ChainEvent {
                 .get(&block_type)
                 .unwrap()
                 .iter()
-                .map(|k| k.key.clone())
+                .map(|k| k.key())
                 .collect())
         } else {
             Err(SolDidError::KeySetIncoherence)
