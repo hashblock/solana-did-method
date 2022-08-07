@@ -24,6 +24,7 @@ pub enum SDMDidState {
 pub struct SDMDidDocCurrent {
     state: SDMDidState,
     keytype: SMDKeyType,
+    authority: Pubkey,
     prefix: [u8; 32],
     bump: u8,
     pub keys: Vec<Pubkey>,
@@ -50,6 +51,14 @@ impl SDMDid {
             Err(SDMProgramError::InvalidDidReference)
         }
     }
+    /// Verify that the authority key is equal on the DID
+    pub fn verify_authority(&self, in_auth_key: Pubkey) -> Result<(), SDMProgramError> {
+        if self.did_doc.authority == in_auth_key {
+            Ok(())
+        } else {
+            Err(SDMProgramError::InvalidAuthority)
+        }
+    }
     /// Rotate the active keys from the instruction data
     pub fn rotate_with(&mut self, with: DIDRotation) -> Result<(), SDMProgramError> {
         self.did_doc.keys = with.keys;
@@ -69,7 +78,11 @@ impl SDMDid {
 
     /// Assumes the account has not been initialized yet
     /// If so, returns default state or otherwise throws error
-    pub fn unpack_unitialized(data: &[u8], with: DIDInception) -> Result<Self, SDMProgramError> {
+    pub fn unpack_unitialized(
+        data: &[u8],
+        with: DIDInception,
+        authority: &Pubkey,
+    ) -> Result<Self, SDMProgramError> {
         let is_initialized = data[0] != 0;
         if is_initialized {
             Err(SDMProgramError::DidAlreadyInitialized)
@@ -80,6 +93,7 @@ impl SDMDid {
                 did_doc: SDMDidDocCurrent {
                     state: SDMDidState::Inception,
                     keytype: with.keytype,
+                    authority: authority.clone(),
                     prefix: with.prefix,
                     bump: with.bump,
                     keys: with.keys,

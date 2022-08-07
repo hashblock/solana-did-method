@@ -72,7 +72,7 @@ fn sdm_inception(
         &[&[&did.prefix, &[did.bump]]],
     )?;
     let mut my_data = pda.try_borrow_mut_data()?;
-    let mut did_doc = SDMDid::unpack_unitialized(&my_data, did)?;
+    let mut did_doc = SDMDid::unpack_unitialized(&my_data, did, authority_account.key)?;
     did_doc.pack(*my_data)?;
     Ok(())
 }
@@ -89,6 +89,7 @@ fn sdm_rotation(accounts: &[AccountInfo], _program_id: &Pubkey, did: DIDRotation
     let pda = next_account_info(account_iter)?;
     let mut my_data = pda.try_borrow_mut_data()?;
     let mut did_doc = SDMDid::unpack(&my_data)?;
+    did_doc.verify_authority(authority_account.key.clone())?;
     did_doc.verify_inbound(did.keytype, did.prefix)?;
     did_doc.rotate_with(did)?;
     did_doc.pack(*my_data)?;
@@ -111,6 +112,7 @@ fn sdm_decommission(
     let pda = next_account_info(account_iter)?;
     let mut my_data = pda.try_borrow_mut_data()?;
     let mut did_doc = SDMDid::unpack(&my_data)?;
+    did_doc.verify_authority(authority_account.key.clone())?;
     did_doc.verify_inbound(did.keytype, did.prefix)?;
     did_doc.decommission_with(did)?;
     did_doc.pack(*my_data)?;

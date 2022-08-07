@@ -19,6 +19,8 @@ pub enum SDMProgramError {
     InvalidDidReference,
     #[error("Owner is not signer for DID")]
     OwnerNotSignerError,
+    #[error("Authority not valid for DID")]
+    InvalidAuthority,
 }
 
 /// Enables 'into()` on custom error to convert

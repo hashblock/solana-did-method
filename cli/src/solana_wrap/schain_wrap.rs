@@ -177,6 +177,7 @@ pub fn get_inception_datasize(key_count: usize) -> usize {
         .saturating_add(std::mem::size_of::<bool>()) // Initialized
         .saturating_add(std::mem::size_of::<u16>()) // Version
         .saturating_add(std::mem::size_of::<SDMDidState>()) // State
+        .saturating_add(PUBKEY_BYTES) // Authority pubkey
         .saturating_add(PUBKEY_BYTES) // Prefix pubkey
         .saturating_add(std::mem::size_of::<u8>()) // bump
         .saturating_add(std::mem::size_of::<u32>()) // Borsh vector count

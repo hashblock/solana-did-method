@@ -122,9 +122,6 @@ fn test_pasta_rotation_pass() -> SolDidResult<()> {
     let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
     // Initialize an empty wallet
     let mut wallet = init_wallet()?;
-    // Capture our programs log statements
-    // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
-    // solana_logger::setup_with_default("solana_runtime::message=debug");
 
     // Incept keys
     let result = build_and_run_inception(&mchain, &mut wallet, 2i8, 1u64);
@@ -134,6 +131,9 @@ fn test_pasta_rotation_pass() -> SolDidResult<()> {
         let (_signature, prefix, _) = result?;
         let mut barren_ks = PastaKeySet::new_empty();
         sleep(Duration::from_secs(5));
+        // Capture our programs log statements
+        // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
+        // solana_logger::setup_with_default("solana_runtime::message=debug");
 
         let result = wallet.rotate_did(prefix.clone(), &mut barren_ks, None, None, Some(&mchain));
         assert!(result.is_ok());
