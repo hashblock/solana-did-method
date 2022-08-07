@@ -201,6 +201,8 @@ impl Chain for SolanaChain {
         let (pda_key, bump) = self.safe_pda_from_digest(&prefix, &digest_bytes)?;
         // Now we want to create two (2) instructions:
         // 1. The ed25519 signature verification on the serialized message
+
+        // let signed_digest = self.signer.sign_message(&digest_bytes);
         let verify_instruction = ed25519_instruction::new_ed25519_instruction(
             &ed25519_dalek::Keypair::from_bytes(&self.signer.to_bytes())?,
             &event_msg.serialize()?,
@@ -273,7 +275,7 @@ impl Chain for SolanaChain {
         if check_acc.is_err() {
             return Err(SolDidError::DIDAccountNotExists(pda_key.to_string()));
         }
-        let _rotation_digest = event_msg.get_digest().digest;
+        // let _rotation_digest = event_msg.get_digest().digest;
         // Now we want to create two (2) instructions:
         // 1. The ed25519 signature verification on the serialized message
         let verify_instruction = ed25519_instruction::new_ed25519_instruction(
