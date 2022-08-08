@@ -2,7 +2,7 @@
 mod clparse;
 pub mod errors;
 
-use cli::{errors::SolDidResult, solana_wrap::schain_wrap::SolanaChain};
+use soldid::{errors::SolDidResult, solana_wrap::schain_wrap::SolanaChain};
 
 use crate::clparse::command_line;
 

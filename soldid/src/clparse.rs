@@ -23,10 +23,15 @@ pub fn command_line() -> Command<'static> {
         .subcommand(Command::new("rotate").about("Rotate a wallet's keyset"))
 }
 
-#[test]
-fn test_command_pass() {
-    // use super::*;
-    let mut cmd = command_line();
+#[cfg(test)]
+mod cli_tests {
+    use super::command_line;
 
-    cmd.print_help().unwrap();
+    #[test]
+    fn test_command_pass() {
+        // use super::*;
+        let mut cmd = command_line();
+
+        cmd.print_help().unwrap();
+    }
 }

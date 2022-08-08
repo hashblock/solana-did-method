@@ -1,13 +1,6 @@
 // #[cfg(test)]
 // mod tests {
 use borsh::BorshDeserialize;
-use cli::{
-    chain_trait::Chain,
-    errors::SolDidResult,
-    pkey_wrap::PastaKeySet,
-    solana_wrap::schain_wrap::SolanaChain,
-    wallet::{init_wallet, Wallet},
-};
 use hbkr_rs::key_manage::KeySet;
 use solana_did_method::{id, instruction::SDMInstruction};
 use solana_rpc::rpc::JsonRpcConfig;
@@ -17,6 +10,13 @@ use solana_sdk::{
     signature::Keypair,
 };
 use solana_test_validator::{TestValidator, TestValidatorGenesis};
+use soldid::{
+    chain_trait::Chain,
+    errors::SolDidResult,
+    pkey_wrap::PastaKeySet,
+    solana_wrap::schain_wrap::SolanaChain,
+    wallet::{init_wallet, Wallet},
+};
 use std::{fs, path::PathBuf, str::FromStr, thread::sleep, time::Duration};
 
 /// Location/Name of ProgramTestGenesis ledger

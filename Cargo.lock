@@ -758,31 +758,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cli"
-version = "0.5.0"
-dependencies = [
- "base64 0.13.0",
- "borsh",
- "bs58",
- "clap 3.2.2",
- "ed25519-dalek",
- "hbkr-rs",
- "hbpasta-rs",
- "semver 1.0.12",
- "serde_json",
- "solana-cli-config",
- "solana-client",
- "solana-did-method",
- "solana-logger",
- "solana-rpc",
- "solana-sdk",
- "solana-test-validator",
- "solana-transaction-status",
- "thiserror",
- "tokio",
-]
-
-[[package]]
 name = "cmake"
 version = "0.1.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5484,6 +5459,31 @@ dependencies = [
  "scroll",
  "thiserror",
  "time 0.1.44",
+]
+
+[[package]]
+name = "soldid"
+version = "0.5.1"
+dependencies = [
+ "base64 0.13.0",
+ "borsh",
+ "bs58",
+ "clap 3.2.2",
+ "ed25519-dalek",
+ "hbkr-rs",
+ "hbpasta-rs",
+ "semver 1.0.12",
+ "serde_json",
+ "solana-cli-config",
+ "solana-client",
+ "solana-did-method",
+ "solana-logger",
+ "solana-rpc",
+ "solana-sdk",
+ "solana-test-validator",
+ "solana-transaction-status",
+ "thiserror",
+ "tokio",
 ]
 
 [[package]]

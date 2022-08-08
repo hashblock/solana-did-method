@@ -1,6 +1,6 @@
 [package]
-name = "cli"
-version = "0.5.0"
+name = "soldid"
+version = "0.5.1"
 edition = "2021"
 description = "solana-did-method file system wallet CLI"
 
