@@ -27,6 +27,7 @@ use std::{fs, io::Write, path::PathBuf, str::FromStr};
 pub struct Keys {
     #[borsh_skip]
     dirty: bool,
+    name: String,
     prefix: String,
     threshold: u64,
     chain_events: Vec<ChainEvent>,
@@ -42,13 +43,19 @@ impl Keys {
         self.chain_events().len()
     }
     /// Get the prefix
-    pub fn prefix(&self) -> String {
-        self.prefix.clone()
+    pub fn prefix(&self) -> &String {
+        &self.prefix
+    }
+
+    /// Get the key descriptive name
+    pub fn name(&self) -> &String {
+        &self.name
     }
     /// Accepts a native keyset this has been incepted
     /// distributes current (Incepted) and next (NextRotation) keys
     /// and stores the chain event initiating this function call
     pub fn incept_keys(
+        name: &String,
         chain: Option<&dyn Chain>,
         key_set: &dyn KeySet,
         threshold: u64,
@@ -93,6 +100,7 @@ impl Keys {
         Ok((
             Keys {
                 dirty: true,
+                name: name.to_string(),
                 prefix: prefix.clone(),
                 threshold,
                 chain_events: chain_vec,

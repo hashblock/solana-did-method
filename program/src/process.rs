@@ -4,7 +4,7 @@ use crate::{
     instruction::{
         DIDDecommission, DIDInception, DIDRotation, InitializeDidAccount, SDMInstruction,
     },
-    state::{SDMDid, SDMProgramError},
+    state::SDMDid,
 };
 
 use solana_program::{
@@ -52,11 +52,7 @@ fn sdm_inception(
     // Get the system program
     let sys_prog_id = next_account_info(account_iter)?;
 
-    let (pda_comp, pda_bump) = Pubkey::find_program_address(&[&did.prefix], program_id);
-    if pda_comp != *pda.key || pda_bump != did.bump || !pda.is_writable || !pda.data_is_empty() {
-        return Err(SDMProgramError::DidInvalidKey.into());
-    }
-    // Add checks here for pubkey and bump matches
+    // Create the PDA for this DID
     let create_pda_ix = &system_instruction::create_account(
         authority_account.key,
         pda.key,

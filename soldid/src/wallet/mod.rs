@@ -68,9 +68,9 @@ impl Wallet {
     }
     /// Add new managed Keys(et) with name
     fn add_keys(&mut self, keysets: Keys) -> SolDidResult<()> {
-        let check = keysets.prefix();
+        let check = keysets.prefix().clone();
         if self.prefixes.contains(&check) {
-            Err(SolDidError::KeysExistError(check))
+            Err(SolDidError::KeysPrefixExistError(check))
         } else {
             self.prefixes.insert(check);
             self.keys.push(keysets);
@@ -79,14 +79,28 @@ impl Wallet {
         }
     }
 
+    /// Check if named keyset exists or not
+    fn key_name_exists(&self, name: &String) -> bool {
+        for keys in &self.keys {
+            if keys.name() == name {
+                return true;
+            }
+        }
+        false
+    }
+
     /// Creates a new DID with keyset
     pub fn new_did(
         &mut self,
+        name: &String,
         keyset: &dyn KeySet,
         threshold: u64,
         chain: Option<&dyn Chain>,
     ) -> SolDidResult<(String, String, Vec<u8>)> {
-        let (keys, signature, prefix, digest) = Keys::incept_keys(chain, keyset, threshold)?;
+        if self.key_name_exists(name) {
+            return Err(SolDidError::KeysNameExistError(name.to_string()));
+        }
+        let (keys, signature, prefix, digest) = Keys::incept_keys(name, chain, keyset, threshold)?;
         self.add_keys(keys)?;
         Ok((signature, prefix, digest))
     }
@@ -111,7 +125,7 @@ impl Wallet {
             Err(SolDidError::KeySetIncoherence)
         } else {
             // Get the prefix Keys
-            match self.keys.iter_mut().find(|k| k.prefix() == keyprefix) {
+            match self.keys.iter_mut().find(|k| k.prefix() == &keyprefix) {
                 Some(k) => {
                     let result = k.rotate_keys(keyset, new_next_set, threshold, chain);
                     if result.is_ok() {
@@ -134,7 +148,7 @@ impl Wallet {
         if !keyset.is_barren() {
             Err(SolDidError::KeySetIncoherence)
         } else {
-            match self.keys.iter_mut().find(|k| k.prefix() == keyprefix) {
+            match self.keys.iter_mut().find(|k| k.prefix() == &keyprefix) {
                 Some(k) => {
                     let result = k.decommission_keys(keyset, chain);
                     if result.is_ok() {
@@ -147,9 +161,17 @@ impl Wallet {
         }
     }
     /// Returns keyset Keys for prefix
-    pub fn keys_for(&self, prefix: &String) -> SolDidResult<&Keys> {
+    pub fn keys_for_prefix(&self, prefix: &String) -> SolDidResult<&Keys> {
         // Get the prefix Keys
-        match self.keys.iter().find(|k| &k.prefix() == prefix) {
+        match self.keys.iter().find(|k| k.prefix() == prefix) {
+            Some(k) => Ok(k),
+            None => Err(SolDidError::KeySetIncoherence),
+        }
+    }
+    /// Returns keyset Keys for name
+    pub fn keys_for_name(&self, name: &String) -> SolDidResult<&Keys> {
+        // Get the prefix Keys
+        match self.keys.iter().find(|k| k.name() == name) {
             Some(k) => Ok(k),
             None => Err(SolDidError::KeySetIncoherence),
         }
@@ -262,14 +284,48 @@ mod wallet_tests {
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let (signature, prefix, digest) = w.new_did(&kset1, threshold, None)?;
+        let keys_name = "Franks First".to_string();
+        let (signature, prefix, digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
         assert_eq!("sol_did_signature".to_string(), signature);
         assert!(!digest.is_empty());
-        let k = w.keys_for(&prefix)?;
-        assert_eq!(prefix, k.prefix());
+        let k = w.keys_for_prefix(&prefix)?;
+        assert_eq!(prefix, *k.prefix());
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         assert_eq!(w.keys.len(), 1);
+        let k = w.keys_for_name(&keys_name);
+        assert!(k.is_ok());
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
+        Ok(())
+    }
+
+    #[test]
+    /// Test keys finders
+    fn test_keys_finder_pass() -> SolDidResult<()> {
+        let mut w = init_wallet()?;
+        assert!(w.prefixes.is_empty());
+        assert!(w.keys.is_empty());
+        let count = 2i8;
+        let threshold = 1u64;
+        let kset1 = PastaKeySet::new_for(count);
+        let keys_name = "Franks First".to_string();
+        let (_signature, prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
+        let k = w.keys_for_prefix(&prefix)?;
+        assert_eq!(prefix, *k.prefix());
+        let k = w.keys_for_name(&keys_name)?;
+        assert_eq!(keys_name, *k.name());
+        fs::remove_dir_all(w.full_path.parent().unwrap())?;
+        Ok(())
+    }
+    #[test]
+    /// Test keys finders
+    fn test_keys_finder_fail() -> SolDidResult<()> {
+        let w = init_wallet()?;
+        assert!(w.prefixes.is_empty());
+        assert!(w.keys.is_empty());
+        let keys_name = "Franks First".to_string();
+        assert!(w.keys_for_name(&keys_name).is_err());
+        assert!(w.keys_for_prefix(&keys_name).is_err());
         fs::remove_dir_all(w.full_path.parent().unwrap())?;
         Ok(())
     }
@@ -282,7 +338,8 @@ mod wallet_tests {
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
         let w = init_wallet()?;
         assert_eq!(w.prefixes.len(), 1);
         // Target prefix we want to rotation
@@ -295,7 +352,7 @@ mod wallet_tests {
         // Observe
         let rot_keys = w.keys.first().unwrap();
         let rot_prefix = rot_keys.prefix();
-        assert_eq!(rot_prefix, prefix);
+        assert_eq!(*rot_prefix, prefix);
         // assert_eq!(
         //     new_first.keysets_next.first().unwrap().key,
         //     rot_keys.keysets_current.first().unwrap().key
@@ -312,9 +369,10 @@ mod wallet_tests {
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
         let new_first = w.keys.first().unwrap().prefix().to_string();
-        assert_eq!(w.keys_for(&new_first)?.chain_event_len(), 1);
+        assert_eq!(w.keys_for_prefix(&new_first)?.chain_event_len(), 1);
         // Rotate
         let mut w = init_wallet()?;
         let mut barren_ks = PastaKeySet::new_empty();
@@ -327,7 +385,7 @@ mod wallet_tests {
             None,
             None,
         )?;
-        let chain_events = w.keys_for(&new_first)?.chain_events();
+        let chain_events = w.keys_for_prefix(&new_first)?.chain_events();
         assert_eq!(chain_events.len(), 2);
         let next_privates = chain_events
             .last()
@@ -347,9 +405,10 @@ mod wallet_tests {
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
         let new_first = w.keys.first().unwrap().prefix().to_string();
-        assert_eq!(w.keys_for(&new_first)?.chain_event_len(), 1);
+        assert_eq!(w.keys_for_prefix(&new_first)?.chain_event_len(), 1);
         // Rotate to empty
         let mut w = init_wallet()?;
         let mut barren_ks = PastaKeySet::new_empty();
@@ -373,9 +432,10 @@ mod wallet_tests {
         let count = 2i8;
         let threshold = 1u64;
         let kset1 = PastaKeySet::new_for(count);
-        let (_signature, _prefix, _digest) = w.new_did(&kset1, threshold, None)?;
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
         let new_first = w.keys.first().unwrap().prefix().to_string();
-        assert_eq!(w.keys_for(&new_first)?.chain_event_len(), 1);
+        assert_eq!(w.keys_for_prefix(&new_first)?.chain_event_len(), 1);
         // Decommission keys
         let mut w = init_wallet()?;
         let mut barren_ks = PastaKeySet::new_empty();

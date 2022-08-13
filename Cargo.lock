@@ -5463,7 +5463,7 @@ dependencies = [
 
 [[package]]
 name = "soldid"
-version = "0.5.1"
+version = "0.6.1"
 dependencies = [
  "base64 0.13.0",
  "borsh",
