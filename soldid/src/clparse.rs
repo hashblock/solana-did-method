@@ -13,15 +13,42 @@ pub fn command_line() -> Command<'static> {
         .arg_required_else_help(true)
         .arg(
             Arg::new("wallet")
-                .long("wallet")
+                .long("did-wallet")
                 .short('w')
+                .global(true)
                 .value_parser(value_parser!(PathBuf))
                 .takes_value(true)
                 .default_value("~/.solwall")
-                .help("Use wallet configuration [default: ~/.solwall/wallet.bor]"),
+                .help("Use wallet configuration in path [default: ~/.solwall]"),
         )
         .subcommand(Command::new("did-list").about("List a wallet's keysets"))
-        .subcommand(Command::new("did-create").about("Create a wallet keyset and did"))
+        .subcommand(
+            Command::new("did-create")
+                .about("Create a wallet keyset and did")
+                .arg(
+                    Arg::new("name")
+                        .short('n')
+                        .takes_value(true)
+                        .required(true)
+                        .help("Set the new managed keys of the DID to a familiar name"),
+                )
+                .arg(
+                    Arg::new("keys")
+                        .short('k')
+                        .takes_value(true)
+                        .default_value("2")
+                        .value_parser(value_parser!(i16))
+                        .help("Set the number of keypairs to generate for the DID"),
+                )
+                .arg(
+                    Arg::new("threshold")
+                        .short('t')
+                        .takes_value(true)
+                        .default_value("1")
+                        .value_parser(value_parser!(i16))
+                        .help("Set the signing threshold to modify the DID document"),
+                ),
+        )
         .subcommand(Command::new("did-rotate").about("Rotate a wallet's keyset"))
 }
 
@@ -38,16 +65,17 @@ mod cli_tests {
         let y = cmd.get_matches_from(vec!["soldid", "did-list"]);
         let (subcmd, matches) = y.subcommand().unwrap();
         assert_eq!(subcmd, "did-list");
-        assert!(!matches.args_present());
+        assert!(matches.args_present());
     }
     #[test]
     fn test_command_simple_did_create_pass() {
         // use super::*;
         let cmd = command_line();
-        let y = cmd.get_matches_from(vec!["soldid", "did-create"]);
+        let y = cmd.get_matches_from(vec!["soldid", "did-create", "-n", "Alice"]);
         let (subcmd, matches) = y.subcommand().unwrap();
         assert_eq!(subcmd, "did-create");
-        assert!(!matches.args_present());
+        assert_eq!(*matches.get_one::<i16>("keys").unwrap(), 2);
+        assert_eq!(*matches.get_one::<i16>("threshold").unwrap(), 1);
     }
 
     #[test]
@@ -55,9 +83,8 @@ mod cli_tests {
         // use super::*;
         let cmd = command_line();
         let y = cmd.get_matches_from(vec!["soldid", "did-rotate"]);
-        let (subcmd, matches) = y.subcommand().unwrap();
+        let (subcmd, _matches) = y.subcommand().unwrap();
         assert_eq!(subcmd, "did-rotate");
-        assert!(!matches.args_present());
     }
 
     #[test]
