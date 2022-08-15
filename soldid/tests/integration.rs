@@ -71,7 +71,7 @@ fn build_and_run_inception(
     let kset1 = PastaKeySet::new_for(key_count);
     assert!(!kset1.is_barren());
     let keys_name = "Franks First".to_string();
-    wallet.new_did(&keys_name, &kset1, key_threshold, Some(vchain))
+    wallet.new_did(&keys_name, &kset1, key_threshold as i8, Some(vchain))
 }
 
 #[test]

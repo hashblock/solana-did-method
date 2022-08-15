@@ -29,7 +29,7 @@ pub struct Keys {
     dirty: bool,
     name: String,
     prefix: String,
-    threshold: u64,
+    threshold: i8,
     chain_events: Vec<ChainEvent>,
 }
 
@@ -58,10 +58,10 @@ impl Keys {
         name: &String,
         chain: Option<&dyn Chain>,
         key_set: &dyn KeySet,
-        threshold: u64,
+        threshold: i8,
     ) -> SolDidResult<(Self, String, String, Vec<u8>)> {
         // Create an inception event
-        let icp_event = inception(key_set, threshold)?;
+        let icp_event = inception(key_set, threshold as u64)?;
         let prefix = icp_event.event.get_prefix().to_str();
         // Optionally store on chain
         let signature = match chain {
@@ -156,10 +156,10 @@ impl Keys {
                     barren_ks,
                     match threshold {
                         Some(t) => {
-                            self.threshold = t;
+                            self.threshold = t as i8;
                             t
                         }
-                        None => self.threshold,
+                        None => self.threshold as u64,
                     },
                 )?;
                 // Optionally store on chain

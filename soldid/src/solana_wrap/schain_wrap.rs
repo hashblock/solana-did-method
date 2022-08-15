@@ -257,7 +257,7 @@ impl Chain for SolanaChain {
             ]
             .to_vec(),
         );
-        assert!(txn.is_ok());
+        // assert!(txn.is_ok());
         let signature = txn.unwrap();
         Ok(signature.to_string())
     }
