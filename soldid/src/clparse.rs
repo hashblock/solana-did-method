@@ -8,6 +8,7 @@ pub const DID_LIST: &str = "did-list";
 pub const DID_CREATE: &str = "did-create";
 pub const DID_ROTATE: &str = "did-rotate";
 pub const DID_DECOMMISION: &str = "did-decommision";
+pub const DID_CLOSE: &str = "did-close";
 
 #[allow(dead_code)]
 pub fn command_line() -> Command<'static> {
@@ -57,6 +58,16 @@ pub fn command_line() -> Command<'static> {
         )
         .subcommand(Command::new(DID_ROTATE).about("Rotate a wallet's keyset"))
         .subcommand(Command::new(DID_DECOMMISION).about("Decommision a wallet's keyset"))
+        .subcommand(
+            Command::new(DID_CLOSE)
+                .about("Close a DID account without removing keyset")
+                .arg(
+                    Arg::new("pda")
+                        .short('p')
+                        .takes_value(true)
+                        .help("PDA pubkey string"),
+                ),
+        )
 }
 
 #[cfg(test)]

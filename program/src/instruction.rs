@@ -77,6 +77,11 @@ pub enum SDMInstruction {
     /// The decommission data includes
     /// 0. DIDDecommission with verifying information and new keys
     SDMDecommission(DIDDecommission),
+    /// Close and remove the DID account
+    /// Accounts expected by this instruction
+    /// 0. `[writeable, signable]` Authorizing account
+    /// 1. `[writeable]` The DID PDA
+    SDMClose,
 }
 
 impl SDMInstruction {
@@ -90,6 +95,7 @@ impl SDMInstruction {
             SDMInstruction::SDMInception(_, _) => Ok(payload),
             SDMInstruction::SDMRotation(_) => Ok(payload),
             SDMInstruction::SDMDecommission(_) => Ok(payload),
+            SDMInstruction::SDMClose => Ok(payload),
         }
     }
 }

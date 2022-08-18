@@ -25,6 +25,7 @@ use solana_did_method::{
     state::SDMDidState,
 };
 use solana_sdk::{
+    account::Account,
     commitment_config::CommitmentConfig,
     ed25519_instruction,
     instruction::{AccountMeta, CompiledInstruction, Instruction},
@@ -57,6 +58,14 @@ impl SolanaChain {
             },
         }
     }
+
+    /// Get accounts assoicated with program id
+    pub fn get_dids(&self) -> Vec<(Pubkey, Account)> {
+        self.rpc_client
+            .get_program_accounts(&self.program_id)
+            .unwrap()
+    }
+
     /// Set the program ID from Publickey
     pub fn set_program_id_from_publickey(&mut self, from: &Publickey) -> SolDidResult<Publickey> {
         let last_pubkey = self.program_id();
@@ -114,6 +123,27 @@ impl SolanaChain {
             .unwrap();
         Ok(self.rpc_client.send_and_confirm_transaction(&transaction)?)
     }
+    /// Remove account
+    pub fn close_did(&self, did_key: &Pubkey) -> SolDidResult<()> {
+        // Accounts to pass to instruction
+        let accounts = &[
+            AccountMeta::new(self.signer.pubkey(), true),
+            AccountMeta::new(*did_key, false),
+            AccountMeta::new(solana_sdk::system_program::id(), false),
+        ];
+        // Build instruction array and submit transaction
+        let txn = self.submit_transaction(
+            [Instruction::new_with_borsh(
+                self.program_id,
+                &SDMInstruction::SDMClose,
+                accounts.to_vec(),
+            )]
+            .to_vec(),
+        );
+        assert!(txn.is_ok());
+        Ok(())
+    }
+
     /// Fetches and decodes a transactions instruction data
     pub fn inception_instructions_from_transaction(
         &self,
@@ -193,7 +223,7 @@ impl Chain for SolanaChain {
         &self,
         key_set: &dyn KeySet,
         event_msg: &EventMessage<SaidEvent<Event>>,
-    ) -> SolDidResult<ChainSignature> {
+    ) -> SolDidResult<(ChainSignature, Publickey)> {
         // Verify prefix is not already a PDA collision
         // Create a PDA for our DID
         let digest_bytes = event_msg.get_digest().digest;
@@ -257,9 +287,10 @@ impl Chain for SolanaChain {
             ]
             .to_vec(),
         );
-        // assert!(txn.is_ok());
+        assert!(txn.is_ok());
         let signature = txn.unwrap();
-        Ok(signature.to_string())
+        let pda_id = Publickey::from(pda_key.to_bytes().to_vec());
+        Ok((signature.to_string(), pda_id))
     }
 
     /// Rotation

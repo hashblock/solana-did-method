@@ -115,6 +115,26 @@ fn sdm_decommission(
     Ok(())
 }
 
+/// Close a DID account
+fn sdm_close(accounts: &[AccountInfo]) -> ProgramResult {
+    let account_iter = &mut accounts.iter();
+    // Signer and payer of PDA for DID
+    let authority_account = next_account_info(account_iter)?;
+    if !authority_account.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    // Get the did proposed account
+    let pda = next_account_info(account_iter)?;
+    let dest_starting_lamports = authority_account.lamports();
+    **authority_account.lamports.borrow_mut() =
+        dest_starting_lamports.checked_add(pda.lamports()).unwrap();
+    **pda.lamports.borrow_mut() = 0;
+
+    let mut source_data = pda.data.borrow_mut();
+    source_data.fill(0);
+    Ok(())
+}
+
 /// Main processing entry point dispatches to specific
 /// instruction handlers
 pub fn process(
@@ -134,5 +154,6 @@ pub fn process(
         }
         SDMInstruction::SDMRotation(input) => sdm_rotation(accounts, program_id, input),
         SDMInstruction::SDMDecommission(input) => sdm_decommission(accounts, program_id, input),
+        SDMInstruction::SDMClose => sdm_close(accounts),
     }
 }

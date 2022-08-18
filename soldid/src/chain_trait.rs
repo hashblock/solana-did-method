@@ -18,7 +18,7 @@ pub trait Chain: std::fmt::Debug {
         &self,
         key_set: &dyn KeySet,
         event_msg: &EventMessage<SaidEvent<Event>>,
-    ) -> SolDidResult<ChainSignature>;
+    ) -> SolDidResult<(ChainSignature, Publickey)>;
     /// Rotation instruction put on the chain
     fn rotation_inst(
         &self,
@@ -32,6 +32,7 @@ pub trait Chain: std::fmt::Debug {
         decommission_digest: &Vec<u8>,
         event_msg: &EventMessage<SaidEvent<Event>>,
     ) -> SolDidResult<ChainSignature>;
+
     /// Get the signer bytes
     fn inst_signer(&self) -> DidSigner;
     /// Get the chain URL in use

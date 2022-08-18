@@ -14,7 +14,7 @@ use super::{
 };
 use hbkr_rs::{
     inception,
-    key_manage::{KeySet, PrivKey, Privatekey},
+    key_manage::{KeySet, PrivKey, Privatekey, Publickey},
     rotation,
     said::SelfAddressingPrefix,
     Prefix,
@@ -29,6 +29,7 @@ pub struct Keys {
     dirty: bool,
     name: String,
     prefix: String,
+    account: Publickey,
     threshold: i8,
     chain_events: Vec<ChainEvent>,
 }
@@ -51,6 +52,11 @@ impl Keys {
     pub fn name(&self) -> &String {
         &self.name
     }
+
+    /// Get the account key
+    pub fn account(&self) -> &Publickey {
+        &self.account
+    }
     /// Accepts a native keyset this has been incepted
     /// distributes current (Incepted) and next (NextRotation) keys
     /// and stores the chain event initiating this function call
@@ -64,9 +70,9 @@ impl Keys {
         let icp_event = inception(key_set, threshold as u64)?;
         let prefix = icp_event.event.get_prefix().to_str();
         // Optionally store on chain
-        let signature = match chain {
+        let (signature, account) = match chain {
             Some(chain) => chain.inception_inst(key_set, &icp_event)?,
-            None => "sol_did_signature".to_string(),
+            None => ("sol_did_signature".to_string(), Publickey::default()),
         };
 
         // Covert Type
@@ -102,6 +108,7 @@ impl Keys {
                 dirty: true,
                 name: name.to_string(),
                 prefix: prefix.clone(),
+                account,
                 threshold,
                 chain_events: chain_vec,
             },

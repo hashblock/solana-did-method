@@ -2,7 +2,12 @@
 mod clparse;
 pub mod errors;
 
+use std::str::FromStr;
+
 use clap::ArgMatches;
+use clparse::DID_CLOSE;
+use solana_did_method::state::SDMDid;
+use solana_sdk::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 use soldid::{
     errors::SolDidResult,
     pkey_wrap::PastaKeySet,
@@ -13,11 +18,29 @@ use soldid::{
 use crate::clparse::{command_line, DID_CREATE, DID_DECOMMISION, DID_LIST, DID_ROTATE};
 
 /// List the keys and their prefixes
-fn list_dids(wallet: &Wallet) -> SolDidResult<()> {
+fn list_dids(wallet: &Wallet, schain: &mut SolanaChain) -> SolDidResult<()> {
     let wkeys = wallet.keys()?;
+    for (pkey, acc) in schain.get_dids() {
+        let adata = try_from_slice_unchecked::<SDMDid>(&acc.data).unwrap();
+        //     let dbuf = base64::decode(acc.data);
+        //     // let dbuf = bs58::decode(acc.data).into_vec().unwrap();
+        //     if dbuf.is_ok() {
+        //         let adata = try_from_slice_unchecked::<SDMDid>(&dbuf.unwrap()).unwrap();
+        println!("DID pubkey {:?}", pkey);
+        println!("DID account {:?}", adata);
+        //     } else {
+        //         println!("Decode error");
+        //         dbuf.unwrap();
+        //     }
+    }
     if wkeys.len() > 0 {
         for keys in wallet.keys()? {
-            println!("Keys: {} has prefix {}", keys.name(), keys.prefix())
+            println!(
+                "Keys: {} has prefix {} at account {:?}",
+                keys.name(),
+                keys.prefix(),
+                keys.account()
+            )
         }
     } else {
         println!("No DID keysets exist at this time");
@@ -59,6 +82,18 @@ fn decommision_did(
     Ok(())
 }
 
+/// Close the DID account on the chain
+fn close_did(
+    _wallet: &mut Wallet,
+    matches: &ArgMatches,
+    schain: &mut SolanaChain,
+) -> SolDidResult<()> {
+    let pda_key = &*matches.get_one::<String>("pda").unwrap();
+    let sol_pk = Pubkey::from_str(pda_key).unwrap();
+    schain.close_did(&sol_pk)?;
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() -> SolDidResult<()> {
     // Parse command line
@@ -74,13 +109,14 @@ async fn main() -> SolDidResult<()> {
     };
     let (command, matches) = cmdline.subcommand().unwrap();
     match command {
-        DID_LIST => list_dids(&wallet)?,
+        DID_LIST => list_dids(&wallet, &mut chain)?,
         DID_CREATE => {
             let _res = create_did(&mut wallet, matches, &mut chain)?;
             {}
         }
         DID_ROTATE => simple_rotate_did(&mut wallet, matches, &mut chain)?,
         DID_DECOMMISION => decommision_did(&mut wallet, matches, &mut chain)?,
+        DID_CLOSE => close_did(&mut wallet, matches, &mut chain)?,
         _ => {}
     }
 
