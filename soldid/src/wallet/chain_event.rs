@@ -58,6 +58,7 @@ pub enum KeyBlock {
 #[derive(BorshDeserialize, BorshSerialize, Clone, Debug, Default)]
 pub struct ChainEvent {
     pub event_type: ChainEventType,
+    pub time_stamp: i64,
     pub did_signature: String,
     pub km_sn: u64,
     pub km_digest: String,

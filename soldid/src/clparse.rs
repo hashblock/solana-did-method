@@ -2,9 +2,10 @@
 
 use std::path::PathBuf;
 
-use clap::{crate_description, crate_name, crate_version, value_parser, Arg, Command};
+use clap::{crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
 
 pub const DID_LIST: &str = "did-list";
+pub const KEYS_LIST: &str = "keys-list";
 pub const DID_CREATE: &str = "did-create";
 pub const DID_ROTATE: &str = "did-rotate";
 pub const DID_DECOMMISION: &str = "did-decommision";
@@ -19,15 +20,35 @@ pub fn command_line() -> Command<'static> {
         .arg_required_else_help(true)
         .arg(
             Arg::new("wallet")
-                .long("did-wallet")
+                .long("wallet-path")
                 .short('w')
                 .global(true)
                 .value_parser(value_parser!(PathBuf))
                 .takes_value(true)
                 .default_value("~/.solwall")
-                .help("Use wallet configuration in path [default: ~/.solwall]"),
+                .help("Use wallet configuration in path"),
         )
-        .subcommand(Command::new(DID_LIST).about("List a wallet's keysets"))
+        .subcommand(Command::new(DID_LIST).about("List a wallet's DIDs"))
+        .subcommand(
+            Command::new(KEYS_LIST)
+                .about("List a wallet's KEYS")
+                .arg(
+                    Arg::new("name")
+                        .short('n')
+                        .long("name")
+                        .takes_value(true)
+                        .required(false)
+                        .value_parser(value_parser!(String))
+                        .help("Name of the managed keys to list"),
+                )
+                .arg(
+                    Arg::new("changes")
+                        .short('c')
+                        .long("changes-full")
+                        .action(ArgAction::SetTrue)
+                        .help("Display full change log information with keys"),
+                ),
+        )
         .subcommand(
             Command::new(DID_CREATE)
                 .about("Create a wallet keyset and did")

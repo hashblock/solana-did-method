@@ -11,6 +11,7 @@ base64 = "0.13.0"
 borsh  = {version="0.9.3", feature="borsh_skip"}
 bs58 = "0.4.0"
 clap = { version = "3", features = ["cargo"] }
+chrono = "0.4.22"
 ed25519-dalek ="1.0.1"
 hbpasta-rs ="0.1.0"
 

@@ -66,6 +66,11 @@ impl SolanaChain {
             .unwrap()
     }
 
+    /// Get a single account
+    pub fn get_did(&self, key: &Pubkey) -> Account {
+        self.rpc_client.get_account(key).unwrap()
+    }
+
     /// Set the program ID from Publickey
     pub fn set_program_id_from_publickey(&mut self, from: &Publickey) -> SolDidResult<Publickey> {
         let last_pubkey = self.program_id();

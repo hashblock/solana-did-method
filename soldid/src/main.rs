@@ -4,15 +4,17 @@ pub mod errors;
 
 use std::str::FromStr;
 
+use chrono::TimeZone;
 use clap::ArgMatches;
-use clparse::DID_CLOSE;
+use clparse::{DID_CLOSE, KEYS_LIST};
+use hbkr_rs::key_manage::PubKey;
 use solana_did_method::state::SDMDid;
 use solana_sdk::{borsh::try_from_slice_unchecked, pubkey::Pubkey};
 use soldid::{
     errors::SolDidResult,
     pkey_wrap::PastaKeySet,
     solana_wrap::schain_wrap::SolanaChain,
-    wallet::{init_wallet, load_wallet_from, Wallet},
+    wallet::{generic_keys::Keys, init_wallet, load_wallet_from, Wallet},
 };
 
 use crate::clparse::{command_line, DID_CREATE, DID_DECOMMISION, DID_LIST, DID_ROTATE};
@@ -20,30 +22,78 @@ use crate::clparse::{command_line, DID_CREATE, DID_DECOMMISION, DID_LIST, DID_RO
 /// List the keys and their prefixes
 fn list_dids(wallet: &Wallet, schain: &mut SolanaChain) -> SolDidResult<()> {
     let wkeys = wallet.keys()?;
-    for (pkey, acc) in schain.get_dids() {
-        let adata = try_from_slice_unchecked::<SDMDid>(&acc.data).unwrap();
-        //     let dbuf = base64::decode(acc.data);
-        //     // let dbuf = bs58::decode(acc.data).into_vec().unwrap();
-        //     if dbuf.is_ok() {
-        //         let adata = try_from_slice_unchecked::<SDMDid>(&dbuf.unwrap()).unwrap();
-        println!("DID pubkey {:?}", pkey);
-        println!("DID account {:?}", adata);
-        //     } else {
-        //         println!("Decode error");
-        //         dbuf.unwrap();
-        //     }
-    }
     if wkeys.len() > 0 {
         for keys in wallet.keys()? {
+            let did_pk = Pubkey::from_str(&keys.account().as_base58_string()).unwrap();
             println!(
-                "Keys: {} has prefix {} at account {:?}",
+                "Getting DID document for '{}' at account {:?}",
                 keys.name(),
-                keys.prefix(),
-                keys.account()
-            )
+                did_pk,
+            );
+            let did_acc = schain.get_did(&did_pk);
+            let adata = try_from_slice_unchecked::<SDMDid>(&did_acc.data).unwrap();
+            println!("DID account {:?}", adata);
         }
     } else {
-        println!("No DID keysets exist at this time");
+        println!("No DID keysets exist");
+    }
+    Ok(())
+}
+
+/// Print key set information
+fn display_keys(keyset: &Keys, detail: Option<&bool>) {
+    let ces = keyset.chain_events();
+    let v = chrono::Utc;
+
+    println!("Keys");
+    println!("----");
+    println!("Name:    {}", keyset.name());
+    println!("Prefix:  {}", keyset.prefix());
+    println!(
+        "Account: {:?}",
+        Pubkey::from_str(keyset.account().as_base58_string().as_str()).unwrap()
+    );
+    if *detail.unwrap() {
+        println!("\nEvents");
+        println!("-----");
+        for ce in ces {
+            println!("Event type:     {:?}", ce.event_type);
+            println!("Tx signature:   {}", ce.did_signature);
+            println!("Datetime (UTC): {}", v.timestamp_millis(ce.time_stamp));
+        }
+    } else {
+        let lce = ces.last().unwrap();
+        println!("\nLast Event");
+        println!("---- -----");
+        println!("Event type:     {:?}", lce.event_type);
+        println!("Tx signature:   {}", lce.did_signature);
+        println!("Datetime (UTC): {}", v.timestamp_millis(lce.time_stamp));
+        println!("Datetime (UTC): {}", lce.time_stamp);
+    }
+    // println!("{:?}", keyset);
+}
+
+fn display_all_keys(wallet: &Wallet, detail: Option<&bool>) {
+    for keys in wallet.keys().unwrap() {
+        display_keys(keys, detail)
+    }
+}
+/// List keys in wallet and optionally detail the change log
+fn list_keys(wallet: &Wallet, matches: &ArgMatches) -> SolDidResult<()> {
+    let full_changes = matches.get_one::<bool>("changes");
+    let kset_name = matches.get_one::<String>("name");
+    if kset_name.is_some() {
+        match kset_name.unwrap().as_str() {
+            "all" => display_all_keys(wallet, full_changes),
+            _ => display_keys(wallet.keys_for_name(kset_name.unwrap())?, full_changes),
+        }
+        // display_keys(wallet.keys_for_name(kset_name.unwrap())?, full_changes);
+    } else {
+        println!("\nKeys named in wallet");
+        println!("----------------------");
+        for key_set in wallet.keys()? {
+            println!("{}", key_set.name());
+        }
     }
     Ok(())
 }
@@ -117,6 +167,7 @@ async fn main() -> SolDidResult<()> {
         DID_ROTATE => simple_rotate_did(&mut wallet, matches, &mut chain)?,
         DID_DECOMMISION => decommision_did(&mut wallet, matches, &mut chain)?,
         DID_CLOSE => close_did(&mut wallet, matches, &mut chain)?,
+        KEYS_LIST => list_keys(&wallet, matches)?,
         _ => {}
     }
 

@@ -2,16 +2,16 @@
 
 use borsh::{BorshDeserialize, BorshSerialize};
 
-use crate::{
-    chain_trait::Chain,
-    errors::{SolDidError, SolDidResult},
-};
-
 use super::{
     chain_event::{ChainEvent, ChainEventType, KeyBlock},
     wallet_enums::{KeyState, KeyType},
     KEYS_CONFIGURATION,
 };
+use crate::{
+    chain_trait::Chain,
+    errors::{SolDidError, SolDidResult},
+};
+use chrono;
 use hbkr_rs::{
     inception,
     key_manage::{KeySet, PrivKey, Privatekey, Publickey},
@@ -67,6 +67,8 @@ impl Keys {
         threshold: i8,
     ) -> SolDidResult<(Self, String, String, Vec<u8>)> {
         // Create an inception event
+        let utc = chrono::Utc::now();
+
         let icp_event = inception(key_set, threshold as u64)?;
         let prefix = icp_event.event.get_prefix().to_str();
         // Optionally store on chain
@@ -82,6 +84,7 @@ impl Keys {
 
         chain_event.km_keytype = set_type;
         chain_event.did_signature = signature.clone();
+        chain_event.time_stamp = utc.timestamp_millis();
 
         // Convert keyset current keys and next keys to Key
         let keysets_current = Keys::to_keys_from_private(
@@ -156,6 +159,7 @@ impl Keys {
                 // Default rotation of keys should create equivalent count of keysets for next
                 let (ncurr, nnext) = barren_ks.rotate(new_next_clone);
                 // Rotate event
+                let utc = chrono::Utc::now();
                 let rot_event = rotation(
                     &self.prefix,
                     &last_event.km_digest,
@@ -184,6 +188,7 @@ impl Keys {
                 let mut chain_event = ChainEvent::from(&rot_event);
                 chain_event.km_keytype = keytype;
                 chain_event.did_signature = signature.clone();
+                chain_event.time_stamp = utc.timestamp_millis();
                 // Build the key state map
                 chain_event.keysets.insert(
                     KeyBlock::CURRENT,
@@ -228,6 +233,7 @@ impl Keys {
             }
             // Rotate event with empty keyset
             // TODO: Check that barren is just that
+            let utc = chrono::Utc::now();
             let rot_event = rotation(
                 &self.prefix,
                 &last_event.km_digest,
@@ -263,6 +269,7 @@ impl Keys {
             let mut chain_event = ChainEvent::from(&rot_event);
             chain_event.km_keytype = keytype;
             chain_event.did_signature = signature.clone();
+            chain_event.time_stamp = utc.timestamp_millis();
             chain_event.event_type = ChainEventType::Decommissioned;
             // Capture key states
             chain_event.keysets.insert(KeyBlock::PAST, event_past);
