@@ -4,7 +4,6 @@ pub mod errors;
 
 use std::str::FromStr;
 
-use chrono::TimeZone;
 use clap::ArgMatches;
 use clparse::{DID_CLOSE, KEYS_LIST};
 use hbkr_rs::key_manage::PubKey;
@@ -43,32 +42,25 @@ fn list_dids(wallet: &Wallet, schain: &mut SolanaChain) -> SolDidResult<()> {
 /// Print key set information
 fn display_keys(keyset: &Keys, detail: Option<&bool>) {
     let ces = keyset.chain_events();
-    let v = chrono::Utc;
 
     println!("Keys");
     println!("----");
-    println!("Name:    {}", keyset.name());
-    println!("Prefix:  {}", keyset.prefix());
+    println!("Name:      {}", keyset.name());
+    println!("Prefix:    {}", keyset.prefix());
     println!(
-        "Account: {:?}",
+        "Account:   {:?}",
         Pubkey::from_str(keyset.account().as_base58_string().as_str()).unwrap()
     );
+    println!("Threshold: {}\n- Events", keyset.threshold());
     if *detail.unwrap() {
-        println!("\nEvents");
-        println!("-----");
+        // println!("\nEvents");
+        // println!("-----");
         for ce in ces {
-            println!("Event type:     {:?}", ce.event_type);
-            println!("Tx signature:   {}", ce.did_signature);
-            println!("Datetime (UTC): {}", v.timestamp_millis(ce.time_stamp));
+            println!("{}", ce);
         }
     } else {
         let lce = ces.last().unwrap();
-        println!("\nLast Event");
-        println!("---- -----");
-        println!("Event type:     {:?}", lce.event_type);
-        println!("Tx signature:   {}", lce.did_signature);
-        println!("Datetime (UTC): {}", v.timestamp_millis(lce.time_stamp));
-        println!("Datetime (UTC): {}", lce.time_stamp);
+        println!("{}", lce);
     }
     // println!("{:?}", keyset);
 }

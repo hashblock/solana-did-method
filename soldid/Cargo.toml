@@ -21,7 +21,8 @@ hbkr-rs ="0.3.2"
 # hbkr-rs ={version="0.3.2", path="../../hbkr-rs"}
 # end hbkr
 semver = "1.0.12"
-serde_json = "1.0.81"
+serde_json = "1.0.83"
+serde = { version = "1.0.143", features = ["derive"] }
 solana-client = "~1.10"
 solana-cli-config = "~1.10"
 solana-did-method = {path="../program",version="0.4.0"}

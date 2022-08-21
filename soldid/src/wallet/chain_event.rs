@@ -4,11 +4,13 @@ use crate::errors::{SolDidError, SolDidResult};
 
 use super::{generic_keys::Key, wallet_enums::KeyType};
 use borsh::{BorshDeserialize, BorshSerialize};
+use chrono::TimeZone;
 use hbkr_rs::{
     event::Event, event_message::EventMessage, key_manage::Privatekey, said_event::SaidEvent,
     EventTypeTag, Prefix, Typeable,
 };
-use std::collections::HashMap;
+
+use std::{collections::HashMap, fmt};
 
 #[derive(BorshDeserialize, BorshSerialize, Clone, Copy, Debug, Default)]
 pub enum ChainEventType {
@@ -66,7 +68,32 @@ pub struct ChainEvent {
     pub keysets: HashMap<KeyBlock, Vec<Key>>,
 }
 
+impl fmt::Display for ChainEvent {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let v = chrono::Utc;
+        write!(f, "Event type:     {:?}\n", self.event_type)?;
+        write!(f, "Tx signature:   {}\n", self.did_signature)?;
+        write!(
+            f,
+            "Datetime (UTC): {}\n",
+            v.timestamp_millis(self.time_stamp)
+        )?;
+        for (key, keys) in self.keysets.iter() {
+            write!(f, "- {:?}\n", key)?;
+            let mut counter = 0i8;
+            for k in keys {
+                write!(f, "{counter} {:?}\n", k)?;
+                counter = counter + 1;
+            }
+        }
+        Ok(())
+    }
+}
+
 impl ChainEvent {
+    pub fn get_keys(&self) -> SolDidResult<&HashMap<KeyBlock, Vec<Key>>> {
+        Ok(&self.keysets)
+    }
     pub fn get_keys_for(&self, block_type: KeyBlock) -> SolDidResult<&Vec<Key>> {
         if self.keysets.contains_key(&block_type) {
             Ok(self.keysets.get(&block_type).unwrap())

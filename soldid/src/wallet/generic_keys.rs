@@ -57,6 +57,11 @@ impl Keys {
     pub fn account(&self) -> &Publickey {
         &self.account
     }
+
+    /// Get the threshold value
+    pub fn threshold(&self) -> i8 {
+        self.threshold
+    }
     /// Accepts a native keyset this has been incepted
     /// distributes current (Incepted) and next (NextRotation) keys
     /// and stores the chain event initiating this function call
