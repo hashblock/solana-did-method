@@ -39,7 +39,15 @@ pub fn command_line() -> Command<'static> {
                         .takes_value(true)
                         .required(false)
                         .value_parser(value_parser!(String))
-                        .help("Name of the managed keys to list"),
+                        .help("List keys for this name"),
+                )
+                .arg(
+                    Arg::new("all")
+                        .short('a')
+                        .long("all")
+                        .action(ArgAction::SetTrue)
+                        .conflicts_with("name")
+                        .help("List all keys"),
                 )
                 .arg(
                     Arg::new("changes")
@@ -77,8 +85,30 @@ pub fn command_line() -> Command<'static> {
                         .help("Set the signing threshold to modify the DID document"),
                 ),
         )
-        .subcommand(Command::new(DID_ROTATE).about("Rotate a wallet's keyset"))
-        .subcommand(Command::new(DID_DECOMMISION).about("Decommision a wallet's keyset"))
+        .subcommand(
+            Command::new(DID_ROTATE)
+                .about("Rotate a wallet's keyset")
+                .arg(
+                    Arg::new("name")
+                        .short('n')
+                        .takes_value(true)
+                        .required(true)
+                        .value_parser(value_parser!(String))
+                        .help("Name of keyset to rotate"),
+                ),
+        )
+        .subcommand(
+            Command::new(DID_DECOMMISION)
+                .about("Decommision a wallet's keyset")
+                .arg(
+                    Arg::new("name")
+                        .short('n')
+                        .takes_value(true)
+                        .required(true)
+                        .value_parser(value_parser!(String))
+                        .help("Name of keyset to decommission"),
+                ),
+        )
         .subcommand(
             Command::new(DID_CLOSE)
                 .about("Close a DID account without removing keyset")
@@ -121,7 +151,7 @@ mod cli_tests {
     fn test_command_simple_did_rotate_pass() {
         // use super::*;
         let cmd = command_line();
-        let y = cmd.get_matches_from(vec!["soldid", "did-rotate"]);
+        let y = cmd.get_matches_from(vec!["soldid", "did-rotate", "-n", "Alice"]);
         let (subcmd, _matches) = y.subcommand().unwrap();
         assert_eq!(subcmd, "did-rotate");
     }
@@ -129,7 +159,7 @@ mod cli_tests {
     #[test]
     fn test_command_arg_default_wallet_pass() {
         let cmd = command_line();
-        let y = cmd.get_matches_from(vec!["soldid", "did-rotate"]);
+        let y = cmd.get_matches_from(vec!["soldid", "did-list"]);
         let w: &PathBuf = y.get_one("wallet").unwrap();
         assert_eq!(PathBuf::from("~/.solwall"), *w);
     }
@@ -139,7 +169,7 @@ mod cli_tests {
         let cmd = command_line();
         let faux_dir = "~/dummy";
         let faux_path = PathBuf::from(faux_dir);
-        let y = cmd.get_matches_from(vec!["soldid", "-w", faux_dir, "did-rotate"]);
+        let y = cmd.get_matches_from(vec!["soldid", "-w", faux_dir, "did-rotate", "-n", "Alice"]);
         // println!("{:?}", y.value_source("wallet").unwrap());
         // assert_eq!(y.occurrences_of("wallet"), 0);
 

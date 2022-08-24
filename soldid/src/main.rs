@@ -39,7 +39,7 @@ fn list_dids(wallet: &Wallet, schain: &mut SolanaChain) -> SolDidResult<()> {
     Ok(())
 }
 
-/// Print key set information
+/// Display key set information
 fn display_keys(keyset: &Keys, detail: Option<&bool>) {
     let ces = keyset.chain_events();
 
@@ -62,9 +62,9 @@ fn display_keys(keyset: &Keys, detail: Option<&bool>) {
         let lce = ces.last().unwrap();
         println!("{}", lce);
     }
-    // println!("{:?}", keyset);
 }
 
+/// Display alll keysets
 fn display_all_keys(wallet: &Wallet, detail: Option<&bool>) {
     for keys in wallet.keys().unwrap() {
         display_keys(keys, detail)
@@ -74,15 +74,16 @@ fn display_all_keys(wallet: &Wallet, detail: Option<&bool>) {
 fn list_keys(wallet: &Wallet, matches: &ArgMatches) -> SolDidResult<()> {
     let full_changes = matches.get_one::<bool>("changes");
     let kset_name = matches.get_one::<String>("name");
+    let kset_all = matches.get_one::<bool>("all").unwrap();
     if kset_name.is_some() {
-        match kset_name.unwrap().as_str() {
-            "all" => display_all_keys(wallet, full_changes),
-            _ => display_keys(wallet.keys_for_name(kset_name.unwrap())?, full_changes),
-        }
-        // display_keys(wallet.keys_for_name(kset_name.unwrap())?, full_changes);
-    } else {
-        println!("\nKeys named in wallet");
-        println!("----------------------");
+        display_keys(wallet.keys_for_name(kset_name.unwrap())?, full_changes)
+    } else if *kset_all {
+        display_all_keys(wallet, full_changes)
+    }
+    // display_keys(wallet.keys_for_name(kset_name.unwrap())?, full_changes);
+    else {
+        println!("\nKeys");
+        println!("----");
         for key_set in wallet.keys()? {
             println!("{}", key_set.name());
         }
@@ -108,11 +109,20 @@ fn create_did(
 
 /// Rotate a new DID
 fn simple_rotate_did(
-    _wallet: &mut Wallet,
-    _matches: &ArgMatches,
-    _schain: &mut SolanaChain,
-) -> SolDidResult<()> {
-    Ok(())
+    wallet: &mut Wallet,
+    matches: &ArgMatches,
+    schain: &mut SolanaChain,
+) -> SolDidResult<(String, Vec<u8>)> {
+    let kset_name = &*matches.get_one::<String>("name").unwrap();
+    let mut barren_ks = PastaKeySet::new_empty();
+    wallet.rotate_did_with_name(
+        kset_name.to_string(),
+        &mut barren_ks,
+        None,
+        None,
+        Some(schain),
+    )
+    // Ok(())
 }
 
 /// Decommision a new DID
@@ -156,7 +166,11 @@ async fn main() -> SolDidResult<()> {
             let _res = create_did(&mut wallet, matches, &mut chain)?;
             {}
         }
-        DID_ROTATE => simple_rotate_did(&mut wallet, matches, &mut chain)?,
+        // TODO: Enable passing of new rotation sets and alternate threshold settings
+        DID_ROTATE => {
+            let _res = simple_rotate_did(&mut wallet, matches, &mut chain)?;
+            {}
+        }
         DID_DECOMMISION => decommision_did(&mut wallet, matches, &mut chain)?,
         DID_CLOSE => close_did(&mut wallet, matches, &mut chain)?,
         KEYS_LIST => list_keys(&wallet, matches)?,

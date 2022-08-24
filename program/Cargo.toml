@@ -6,13 +6,13 @@ version = "0.4.0"
 [dependencies]
 borsh = "0.9.3"
 num_enum = "0.5.6"
-solana-program = "~1.10"
+solana-program = "1.10.*"
 thiserror = "1.0"
 
 [dev-dependencies]
 assert_matches = "1.5.0"
-solana-program-test = "~1.10"
-solana-sdk = "~1.10"
+solana-program-test = "1.10.*"
+solana-sdk = "1.10.*"
 
 [features]
 test-bpf = []

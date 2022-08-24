@@ -136,7 +136,13 @@ fn test_pasta_rotation_pass() -> SolDidResult<()> {
         // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
         // solana_logger::setup_with_default("solana_runtime::message=debug");
 
-        let result = wallet.rotate_did(prefix.clone(), &mut barren_ks, None, None, Some(&mchain));
+        let result = wallet.rotate_did_with_prefix(
+            prefix.clone(),
+            &mut barren_ks,
+            None,
+            None,
+            Some(&mchain),
+        );
         assert!(result.is_ok());
     }
     fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
@@ -162,7 +168,8 @@ fn test_pasta_decommission_pass() -> SolDidResult<()> {
         // Capture our programs log statements
         // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
         // solana_logger::setup_with_default("solana_runtime::message=debug");
-        let result = wallet.decommission_did(prefix.clone(), &mut barren_ks, Some(&mchain));
+        let result =
+            wallet.decommission_did_with_prefix(prefix.clone(), &mut barren_ks, Some(&mchain));
         if result.is_err() {
             println!("Failed decommision");
         }

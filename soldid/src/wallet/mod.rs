@@ -104,7 +104,7 @@ impl Wallet {
         self.add_keys(keys)?;
         Ok((signature, prefix, digest))
     }
-    /// Rotate a DID
+    /// Rotate a DID using a prefix
     /// Takes
     ///     The prefix (DID ID)
     ///     A barren keyset
@@ -112,7 +112,7 @@ impl Wallet {
     ///     Optional new threshold to set for keyset
     ///     Optional chain to commit to
     /// Returns Transaction Signature and Rotation digest
-    pub fn rotate_did(
+    pub fn rotate_did_with_prefix(
         &mut self,
         keyprefix: String,
         keyset: &mut dyn KeySet,
@@ -137,9 +137,41 @@ impl Wallet {
             }
         }
     }
-
+    /// Rotate a DID using a prefix
+    /// Takes
+    ///     The prefix (DID ID)
+    ///     A barren keyset
+    ///     Optional vector of private keys to use as the next rotation
+    ///     Optional new threshold to set for keyset
+    ///     Optional chain to commit to
+    /// Returns Transaction Signature and Rotation digest
+    pub fn rotate_did_with_name(
+        &mut self,
+        keyname: String,
+        keyset: &mut dyn KeySet,
+        new_next_set: Option<Vec<Privatekey>>,
+        threshold: Option<u64>,
+        chain: Option<&dyn Chain>,
+    ) -> SolDidResult<(String, Vec<u8>)> {
+        // Validate keyset is barren
+        if !keyset.is_barren() {
+            Err(SolDidError::KeySetIncoherence)
+        } else {
+            // Get the prefix Keys
+            match self.keys.iter_mut().find(|k| k.name() == &keyname) {
+                Some(k) => {
+                    let result = k.rotate_keys(keyset, new_next_set, threshold, chain);
+                    if result.is_ok() {
+                        self.save()?;
+                    }
+                    result
+                }
+                None => Err(SolDidError::KeySetIncoherence),
+            }
+        }
+    }
     /// Decommission a did by rotating in an empty vector of Privatekeys
-    pub fn decommission_did(
+    pub fn decommission_did_with_prefix(
         &mut self,
         keyprefix: String,
         keyset: &mut dyn KeySet,
@@ -149,6 +181,29 @@ impl Wallet {
             Err(SolDidError::KeySetIncoherence)
         } else {
             match self.keys.iter_mut().find(|k| k.prefix() == &keyprefix) {
+                Some(k) => {
+                    let result = k.decommission_keys(keyset, chain);
+                    if result.is_ok() {
+                        self.save()?;
+                    }
+                    result
+                }
+                None => Err(SolDidError::KeySetIncoherence),
+            }
+        }
+    }
+
+    /// Decommission a did by rotating in an empty vector of Privatekeys
+    pub fn decommission_did_with_name(
+        &mut self,
+        keyname: String,
+        keyset: &mut dyn KeySet,
+        chain: Option<&dyn Chain>,
+    ) -> SolDidResult<(String, Vec<u8>)> {
+        if !keyset.is_barren() {
+            Err(SolDidError::KeySetIncoherence)
+        } else {
+            match self.keys.iter_mut().find(|k| k.name() == &keyname) {
                 Some(k) => {
                     let result = k.decommission_keys(keyset, chain);
                     if result.is_ok() {
