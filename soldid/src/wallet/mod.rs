@@ -133,7 +133,7 @@ impl Wallet {
                     }
                     result
                 }
-                None => Err(SolDidError::KeySetIncoherence),
+                None => Err(SolDidError::PrefixNotFound(keyprefix)),
             }
         }
     }
@@ -166,7 +166,7 @@ impl Wallet {
                     }
                     result
                 }
-                None => Err(SolDidError::KeySetIncoherence),
+                None => Err(SolDidError::NameNotFound(keyname)),
             }
         }
     }
@@ -188,7 +188,7 @@ impl Wallet {
                     }
                     result
                 }
-                None => Err(SolDidError::KeySetIncoherence),
+                None => Err(SolDidError::PrefixNotFound(keyprefix)),
             }
         }
     }
@@ -211,7 +211,7 @@ impl Wallet {
                     }
                     result
                 }
-                None => Err(SolDidError::KeySetIncoherence),
+                None => Err(SolDidError::NameNotFound(keyname)),
             }
         }
     }
@@ -225,7 +225,7 @@ impl Wallet {
         // Get the prefix Keys
         match self.keys.iter().find(|k| k.prefix() == prefix) {
             Some(k) => Ok(k),
-            None => Err(SolDidError::KeySetIncoherence),
+            None => Err(SolDidError::PrefixNotFound(prefix.to_string())),
         }
     }
     /// Returns keyset Keys for name
@@ -233,7 +233,7 @@ impl Wallet {
         // Get the prefix Keys
         match self.keys.iter().find(|k| k.name() == name) {
             Some(k) => Ok(k),
-            None => Err(SolDidError::KeySetIncoherence),
+            None => Err(SolDidError::NameNotFound(name.to_string())),
         }
     }
 

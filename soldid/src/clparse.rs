@@ -8,7 +8,7 @@ pub const DID_LIST: &str = "did-list";
 pub const KEYS_LIST: &str = "keys-list";
 pub const DID_CREATE: &str = "did-create";
 pub const DID_ROTATE: &str = "did-rotate";
-pub const DID_DECOMMISION: &str = "did-decommision";
+pub const DID_DECOMMISION: &str = "did-decommission";
 pub const DID_CLOSE: &str = "did-close";
 
 #[allow(dead_code)]

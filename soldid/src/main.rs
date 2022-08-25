@@ -97,14 +97,11 @@ fn create_did(
     matches: &ArgMatches,
     schain: &mut SolanaChain,
 ) -> SolDidResult<(String, String, Vec<u8>)> {
-    // wallet.new_did()
     let key_count = *matches.get_one::<i8>("keys").unwrap();
     let threshold = *matches.get_one::<i8>("threshold").unwrap();
     let kset_name = &*matches.get_one::<String>("name").unwrap();
     let kset = PastaKeySet::new_for(key_count);
     wallet.new_did(kset_name, &kset, threshold, Some(schain))
-
-    // Ok(())
 }
 
 /// Rotate a new DID
@@ -122,16 +119,17 @@ fn simple_rotate_did(
         None,
         Some(schain),
     )
-    // Ok(())
 }
 
 /// Decommision a new DID
 fn decommision_did(
-    _wallet: &mut Wallet,
-    _matches: &ArgMatches,
-    _schain: &mut SolanaChain,
-) -> SolDidResult<()> {
-    Ok(())
+    wallet: &mut Wallet,
+    matches: &ArgMatches,
+    schain: &mut SolanaChain,
+) -> SolDidResult<(String, Vec<u8>)> {
+    let kset_name = &*matches.get_one::<String>("name").unwrap();
+    let mut barren_ks = PastaKeySet::new_empty();
+    wallet.decommission_did_with_name(kset_name.to_string(), &mut barren_ks, Some(schain))
 }
 
 /// Close the DID account on the chain
@@ -171,7 +169,10 @@ async fn main() -> SolDidResult<()> {
             let _res = simple_rotate_did(&mut wallet, matches, &mut chain)?;
             {}
         }
-        DID_DECOMMISION => decommision_did(&mut wallet, matches, &mut chain)?,
+        DID_DECOMMISION => {
+            let _res = decommision_did(&mut wallet, matches, &mut chain)?;
+            {}
+        }
         DID_CLOSE => close_did(&mut wallet, matches, &mut chain)?,
         KEYS_LIST => list_keys(&wallet, matches)?,
         _ => {}

@@ -4,7 +4,7 @@ use ed25519_dalek::SignatureError;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
-#[error("...")]
+// #[error("...")]
 pub enum SolDidError {
     #[error("Solana default configuration not found")]
     SolanaConfigMissing,
@@ -16,6 +16,10 @@ pub enum SolDidError {
     KeyConfigNotFound(String, String),
     #[error("Key {0} not found")]
     KeyNotFound(String),
+    #[error("Name: {0} not a keyset found in wallet")]
+    NameNotFound(String),
+    #[error("Prefix: {0} not a keyset found in wallet")]
+    PrefixNotFound(String),
     #[error("Keys with prefix {0} already exists")]
     KeysPrefixExistError(String),
     #[error("Keys with name {0} already exists")]
