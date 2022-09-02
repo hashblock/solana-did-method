@@ -12,12 +12,18 @@ use solana_sdk::{
 use solana_test_validator::{TestValidator, TestValidatorGenesis};
 use soldid::{
     chain_trait::Chain,
-    errors::SolDidResult,
+    errors::{SolDidError, SolDidResult},
     pkey_wrap::PastaKeySet,
     solana_wrap::schain_wrap::SolanaChain,
-    wallet::{init_wallet, Wallet},
+    wallet::{load_wallet_from, Wallet},
 };
-use std::{fs, path::PathBuf, str::FromStr, thread::sleep, time::Duration};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+    str::FromStr,
+    thread::sleep,
+    time::Duration,
+};
 
 /// Location/Name of ProgramTestGenesis ledger
 const LEDGER_PATH: &str = "./.ledger";
@@ -25,6 +31,9 @@ const LEDGER_PATH: &str = "./.ledger";
 const PROG_PATH: &str = "../target/deploy/";
 /// Program name from program/Cargo.toml
 const PROG_NAME: &str = "solana_did_method";
+
+/// Test wallet core path
+const TEST_WALLET_LOCATION: &str = "/.solwall_test";
 
 /// Setup the test validator with predefined properties
 fn setup_validator() -> SolDidResult<(TestValidator, Keypair, Pubkey)> {
@@ -44,7 +53,7 @@ fn setup_validator() -> SolDidResult<(TestValidator, Keypair, Pubkey)> {
         // Start the test validator
         .rpc_config(JsonRpcConfig {
             enable_rpc_transaction_history: true,
-            enable_cpi_and_log_storage: true,
+            // enable_extended_tx_metadata_storage: true,
             ..JsonRpcConfig::default_for_test()
         })
         .start();
@@ -58,6 +67,22 @@ fn clean_ledger_setup_validator() -> SolDidResult<(TestValidator, Keypair, Pubke
         std::fs::remove_dir_all(LEDGER_PATH).unwrap();
     }
     setup_validator()
+}
+
+// Generate a test wallet
+fn build_test_wallet() -> SolDidResult<Wallet> {
+    let location = match env::var("HOME") {
+        Ok(val) => val + TEST_WALLET_LOCATION,
+        Err(_) => return Err(SolDidError::HomeNotFoundError),
+    };
+    let wpath = Path::new(&location).to_path_buf();
+    load_wallet_from(&wpath)
+}
+
+// remove a test wallet
+fn remove_test_wallet(wallet: Wallet) -> SolDidResult<()> {
+    fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
+    Ok(())
 }
 
 // Simplify for test usage
@@ -75,12 +100,22 @@ fn build_and_run_inception(
 }
 
 #[test]
+fn test_wallet_test_location_pass() -> SolDidResult<()> {
+    let build_wallet = build_test_wallet();
+    assert!(build_wallet.is_ok());
+    let wallet = build_wallet.unwrap();
+    assert_eq!(wallet.keys()?.len(), 0);
+    let drop_wallet = remove_test_wallet(wallet);
+    assert!(drop_wallet.is_ok());
+    Ok(())
+}
+#[test]
 fn test_basic_test_chain_pass() -> SolDidResult<()> {
     let (test_validator, payer, _program_pk) = clean_ledger_setup_validator()?;
     let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
     let vchain = mchain.version();
     assert_eq!(vchain.major, 1);
-    assert_eq!(vchain.minor, 10);
+    assert_eq!(vchain.minor, 11);
     Ok(())
 }
 
@@ -91,7 +126,7 @@ fn test_pasta_inception_pass() -> SolDidResult<()> {
     // Get the SolanaChain setup
     let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
     // Initialize an empty wallet
-    let mut wallet = init_wallet()?;
+    let mut wallet = build_test_wallet()?;
     // Capture our programs log statements
     // ***************** UNCOMMENT NEXT LINE TO SEE LOGS
     // solana_logger::setup_with_default("solana_runtime::message=debug");
@@ -111,7 +146,7 @@ fn test_pasta_inception_pass() -> SolDidResult<()> {
             println!("Incpepted: {:?}", sdm_inst);
         }
     }
-    fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
+    remove_test_wallet(wallet)?;
     Ok(())
 }
 
@@ -122,7 +157,7 @@ fn test_pasta_rotation_pass() -> SolDidResult<()> {
     // Get the SolanaChain setup
     let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
     // Initialize an empty wallet
-    let mut wallet = init_wallet()?;
+    let mut wallet = build_test_wallet()?;
 
     // Incept keys
     let result = build_and_run_inception(&mchain, &mut wallet, 2i8, 1u64);
@@ -145,7 +180,7 @@ fn test_pasta_rotation_pass() -> SolDidResult<()> {
         );
         assert!(result.is_ok());
     }
-    fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
+    remove_test_wallet(wallet)?;
     Ok(())
 }
 
@@ -156,7 +191,7 @@ fn test_pasta_decommission_pass() -> SolDidResult<()> {
     // Get the SolanaChain setup
     let mchain = SolanaChain::new(test_validator.get_rpc_client(), payer, None);
     // Initialize an empty wallet
-    let mut wallet = init_wallet()?;
+    let mut wallet = build_test_wallet()?;
     // Incept keys
     let result = build_and_run_inception(&mchain, &mut wallet, 2i8, 1u64);
     if result.is_err() {
@@ -174,7 +209,7 @@ fn test_pasta_decommission_pass() -> SolDidResult<()> {
             println!("Failed decommision");
         }
     }
-    fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
+    remove_test_wallet(wallet)?;
     Ok(())
 }
 // }

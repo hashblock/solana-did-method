@@ -247,19 +247,26 @@ impl Wallet {
     /// Load a wallet from a path
     fn read_from_file(loc: PathBuf) -> SolDidResult<Wallet> {
         let mut wallet_file = loc.clone();
-        let root_path = wallet_file.clone();
-        wallet_file.push(WALLET_CONFIGURATION);
+        let root_path = if wallet_file.file_name().unwrap() == WALLET_CONFIGURATION {
+            wallet_file.parent().unwrap().to_path_buf()
+        } else {
+            wallet_file.push(WALLET_CONFIGURATION);
+            wallet_file.parent().unwrap().to_path_buf()
+        };
+        // let root_path = wallet_file.clone();
+
+        // wallet_file.push(WALLET_CONFIGURATION);
         // If the wallet configuration already exists, then load it
         match wallet_file.exists() {
             true => {
                 let mut iw = Wallet::try_from_slice(&fs::read(wallet_file.clone())?)?;
-                iw.root_path = root_path;
+                iw.root_path = root_path.clone();
                 iw.full_path = wallet_file;
                 // Iterate through names loading each into keys
                 iw.keys = iw
                     .prefixes
                     .iter()
-                    .map(|kn| Wallet::load_key(loc.clone(), kn).unwrap())
+                    .map(|kn| Wallet::load_key(iw.root_path.clone(), kn).unwrap())
                     .collect::<Vec<Keys>>();
                 Ok(iw)
             }
@@ -321,198 +328,222 @@ pub fn to_json(title: &str, event: &EventMessage<SaidEvent<Event>>) {
     print!("{title}\n{}\n", serde_json::to_string(event).unwrap());
 }
 
-// #[cfg(test)]
-// mod wallet_tests {
+#[cfg(test)]
+mod wallet_tests {
 
-//     use super::*;
-//     use crate::{pkey_wrap::PastaKeySet, wallet::chain_event::KeyBlock};
+    use hbkr_rs::key_manage::{KeySet, Privatekey};
 
-//     #[test]
-//     /// Test wallet simple creation
-//     fn test_base_wallet_create_pass() -> SolDidResult<()> {
-//         let w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
+    use super::{load_wallet_from, Wallet};
+    use crate::{
+        errors::{SolDidError, SolDidResult},
+        pkey_wrap::PastaKeySet,
+        wallet::chain_event::KeyBlock,
+    };
+    use std::{env, fs, path::Path};
 
-//     #[test]
-//     /// Test wallet simple load
-//     fn test_base_load_existing_pass() -> SolDidResult<()> {
-//         let _ = init_wallet()?;
-//         let w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
+    /// Test wallet core path
+    const TEST_WALLET_LOCATION: &str = "/.solwall_test";
+    // Generate a test wallet
+    fn build_test_wallet() -> SolDidResult<Wallet> {
+        let location = match env::var("HOME") {
+            Ok(val) => val + TEST_WALLET_LOCATION,
+            Err(_) => return Err(SolDidError::HomeNotFoundError),
+        };
+        let wpath = Path::new(&location).to_path_buf();
+        load_wallet_from(&wpath)
+    }
 
-//     #[test]
-//     /// Test an inception event
-//     fn test_inception_pasta_keys_pass() -> SolDidResult<()> {
-//         let mut w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         assert!(w.keys.is_empty());
-//         let count = 2i8;
-//         let threshold = 1u64;
-//         let kset1 = PastaKeySet::new_for(count);
-//         let keys_name = "Franks First".to_string();
-//         let (signature, prefix, digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
-//         assert_eq!("sol_did_signature".to_string(), signature);
-//         assert!(!digest.is_empty());
-//         let k = w.keys_for_prefix(&prefix)?;
-//         assert_eq!(prefix, *k.prefix());
-//         let w = init_wallet()?;
-//         assert_eq!(w.prefixes.len(), 1);
-//         assert_eq!(w.keys.len(), 1);
-//         let k = w.keys_for_name(&keys_name);
-//         assert!(k.is_ok());
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
+    // remove a test wallet
+    fn remove_test_wallet(wallet: Wallet) -> SolDidResult<()> {
+        fs::remove_dir_all(wallet.full_path().parent().unwrap())?;
+        Ok(())
+    }
 
-//     #[test]
-//     /// Test keys finders
-//     fn test_keys_finder_pass() -> SolDidResult<()> {
-//         let mut w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         assert!(w.keys.is_empty());
-//         let count = 2i8;
-//         let threshold = 1u64;
-//         let kset1 = PastaKeySet::new_for(count);
-//         let keys_name = "Franks First".to_string();
-//         let (_signature, prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
-//         let k = w.keys_for_prefix(&prefix)?;
-//         assert_eq!(prefix, *k.prefix());
-//         let k = w.keys_for_name(&keys_name)?;
-//         assert_eq!(keys_name, *k.name());
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
-//     #[test]
-//     /// Test keys finders
-//     fn test_keys_finder_fail() -> SolDidResult<()> {
-//         let w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         assert!(w.keys.is_empty());
-//         let keys_name = "Franks First".to_string();
-//         assert!(w.keys_for_name(&keys_name).is_err());
-//         assert!(w.keys_for_prefix(&keys_name).is_err());
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
+    //     use super::*;
+    //     use crate::{pkey_wrap::PastaKeySet, wallet::chain_event::KeyBlock};
 
-//     #[test]
-//     /// Test rotation event to default keys
-//     fn test_rotation_pasta_keys_pass() -> SolDidResult<()> {
-//         let mut w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         let count = 2i8;
-//         let threshold = 1u64;
-//         let kset1 = PastaKeySet::new_for(count);
-//         let keys_name = "Franks First".to_string();
-//         let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
-//         let w = init_wallet()?;
-//         assert_eq!(w.prefixes.len(), 1);
-//         // Target prefix we want to rotation
-//         let new_first = w.keys.first().unwrap().clone();
-//         let prefix = new_first.prefix().to_string();
-//         // Rotate
-//         let mut w = init_wallet()?;
-//         let mut barren_ks = PastaKeySet::new_empty();
-//         let _ = w.rotate_did(prefix.clone(), &mut barren_ks, None, None, None)?;
-//         // Observe
-//         let rot_keys = w.keys.first().unwrap();
-//         let rot_prefix = rot_keys.prefix();
-//         assert_eq!(*rot_prefix, prefix);
-//         // assert_eq!(
-//         //     new_first.keysets_next.first().unwrap().key,
-//         //     rot_keys.keysets_current.first().unwrap().key
-//         // );
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
+    #[test]
+    /// Test wallet simple creation
+    fn test_base_wallet_create_pass() -> SolDidResult<()> {
+        let wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
 
-//     #[test]
-//     /// Test rotation to different keys than default
-//     fn test_rotation_to_different_pasta_keys_pass() -> SolDidResult<()> {
-//         let mut w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         let count = 2i8;
-//         let threshold = 1u64;
-//         let kset1 = PastaKeySet::new_for(count);
-//         let keys_name = "Franks First".to_string();
-//         let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
-//         let new_first = w.keys.first().unwrap().prefix().to_string();
-//         assert_eq!(w.keys_for_prefix(&new_first)?.chain_event_len(), 1);
-//         // Rotate
-//         let mut w = init_wallet()?;
-//         let mut barren_ks = PastaKeySet::new_empty();
-//         let kset2 = PastaKeySet::new_for(count);
-//         let new_next_set = kset2.current_private_keys();
-//         let _ = w.rotate_did(
-//             new_first.clone(),
-//             &mut barren_ks,
-//             Some(new_next_set.clone()),
-//             None,
-//             None,
-//         )?;
-//         let chain_events = w.keys_for_prefix(&new_first)?.chain_events();
-//         assert_eq!(chain_events.len(), 2);
-//         let next_privates = chain_events
-//             .last()
-//             .unwrap()
-//             .get_keys_as_private_for(KeyBlock::NEXT)?;
-//         assert_eq!(new_next_set, next_privates);
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
+    #[test]
+    /// Test wallet simple load
+    fn test_base_load_existing_pass() -> SolDidResult<()> {
+        let _ = build_test_wallet()?;
+        let wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
 
-//     #[test]
-//     /// Rotate to empty vector of next keeys fails
-//     /// as this is a decommission event
-//     fn test_rotate_to_empty_vector_fail() -> SolDidResult<()> {
-//         let mut w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         let count = 2i8;
-//         let threshold = 1u64;
-//         let kset1 = PastaKeySet::new_for(count);
-//         let keys_name = "Franks First".to_string();
-//         let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
-//         let new_first = w.keys.first().unwrap().prefix().to_string();
-//         assert_eq!(w.keys_for_prefix(&new_first)?.chain_event_len(), 1);
-//         // Rotate to empty
-//         let mut w = init_wallet()?;
-//         let mut barren_ks = PastaKeySet::new_empty();
-//         let new_next_set = Vec::<Privatekey>::new();
-//         let result = w.rotate_did(
-//             new_first.clone(),
-//             &mut barren_ks,
-//             Some(new_next_set.clone()),
-//             None,
-//             None,
-//         );
-//         assert!(result.is_err());
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
+    #[test]
+    /// Test an inception event
+    fn test_inception_pasta_keys_pass() -> SolDidResult<()> {
+        let mut wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        assert!(wallet.keys.is_empty());
+        let count = 2i8;
+        let threshold = 1i8;
+        let kset1 = PastaKeySet::new_for(count);
+        let keys_name = "Alice".to_string();
+        let (signature, prefix, digest) = wallet.new_did(&keys_name, &kset1, threshold, None)?;
+        assert_eq!("sol_did_signature".to_string(), signature);
+        assert!(!digest.is_empty());
+        let k = wallet.keys_for_prefix(&prefix)?;
+        assert_eq!(prefix, *k.prefix());
+        let wallet = build_test_wallet()?;
+        assert_eq!(wallet.prefixes.len(), 1);
+        assert_eq!(wallet.keys.len(), 1);
+        let k = wallet.keys_for_name(&keys_name);
+        assert!(k.is_ok());
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
 
-//     #[test]
-//     fn test_decommission_pass() -> SolDidResult<()> {
-//         let mut w = init_wallet()?;
-//         assert!(w.prefixes.is_empty());
-//         let count = 2i8;
-//         let threshold = 1u64;
-//         let kset1 = PastaKeySet::new_for(count);
-//         let keys_name = "Franks First".to_string();
-//         let (_signature, _prefix, _digest) = w.new_did(&keys_name, &kset1, threshold, None)?;
-//         let new_first = w.keys.first().unwrap().prefix().to_string();
-//         assert_eq!(w.keys_for_prefix(&new_first)?.chain_event_len(), 1);
-//         // Decommission keys
-//         let mut w = init_wallet()?;
-//         let mut barren_ks = PastaKeySet::new_empty();
-//         let result = w.decommission_did(new_first.clone(), &mut barren_ks, None);
-//         assert!(result.is_ok());
-//         fs::remove_dir_all(w.full_path.parent().unwrap())?;
-//         Ok(())
-//     }
-// }
+    #[test]
+    /// Test keys finders
+    fn test_keys_finder_pass() -> SolDidResult<()> {
+        let mut wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        assert!(wallet.keys.is_empty());
+        let count = 2i8;
+        let threshold = 1i8;
+        let kset1 = PastaKeySet::new_for(count);
+        let keys_name = "Alice".to_string();
+        let (_signature, prefix, _digest) = wallet.new_did(&keys_name, &kset1, threshold, None)?;
+        let k = wallet.keys_for_prefix(&prefix)?;
+        assert_eq!(prefix, *k.prefix());
+        let k = wallet.keys_for_name(&keys_name)?;
+        assert_eq!(keys_name, *k.name());
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
+    #[test]
+    /// Test keys finders
+    fn test_keys_finder_fail() -> SolDidResult<()> {
+        let wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        assert!(wallet.keys.is_empty());
+        let keys_name = "Franks First".to_string();
+        assert!(wallet.keys_for_name(&keys_name).is_err());
+        assert!(wallet.keys_for_prefix(&keys_name).is_err());
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
+
+    #[test]
+    /// Test rotation event to default keys
+    fn test_rotation_pasta_keys_pass() -> SolDidResult<()> {
+        let mut wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        let count = 2i8;
+        let threshold = 1i8;
+        let kset1 = PastaKeySet::new_for(count);
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = wallet.new_did(&keys_name, &kset1, threshold, None)?;
+        let wallet = build_test_wallet()?;
+        assert_eq!(wallet.prefixes.len(), 1);
+        // Target prefix we want to rotation
+        let new_first = wallet.keys.first().unwrap().clone();
+        let prefix = new_first.prefix().to_string();
+        // Rotate
+        let mut wallet = build_test_wallet()?;
+        let mut barren_ks = PastaKeySet::new_empty();
+        let _ = wallet.rotate_did_with_name(keys_name, &mut barren_ks, None, None, None)?;
+        // Observe
+        let rot_keys = wallet.keys.first().unwrap();
+        let rot_prefix = rot_keys.prefix();
+        assert_eq!(*rot_prefix, prefix);
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
+
+    #[test]
+    /// Test rotation to different keys than default
+    fn test_rotation_to_different_pasta_keys_pass() -> SolDidResult<()> {
+        let mut wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        let count = 2i8;
+        let threshold = 1i8;
+        let kset1 = PastaKeySet::new_for(count);
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = wallet.new_did(&keys_name, &kset1, threshold, None)?;
+        let new_first = wallet.keys.first().unwrap().prefix().to_string();
+        assert_eq!(wallet.keys_for_prefix(&new_first)?.chain_event_len(), 1);
+        // Rotate
+        let mut wallet = build_test_wallet()?;
+        let mut barren_ks = PastaKeySet::new_empty();
+        let kset2 = PastaKeySet::new_for(count);
+        let new_next_set = kset2.current_private_keys();
+        let _ = wallet.rotate_did_with_name(
+            keys_name,
+            &mut barren_ks,
+            Some(new_next_set.clone()),
+            None,
+            None,
+        )?;
+        let chain_events = wallet.keys_for_prefix(&new_first)?.chain_events();
+        assert_eq!(chain_events.len(), 2);
+        let next_privates = chain_events
+            .last()
+            .unwrap()
+            .get_keys_as_private_for(KeyBlock::NEXT)?;
+        assert_eq!(new_next_set, next_privates);
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
+
+    #[test]
+    /// Rotate to empty vector of next keeys fails
+    /// as this is a decommission event
+    fn test_rotate_to_empty_vector_fail() -> SolDidResult<()> {
+        let mut wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        let count = 2i8;
+        let threshold = 1i8;
+        let kset1 = PastaKeySet::new_for(count);
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = wallet.new_did(&keys_name, &kset1, threshold, None)?;
+        let new_first = wallet.keys.first().unwrap().prefix().to_string();
+        assert_eq!(wallet.keys_for_prefix(&new_first)?.chain_event_len(), 1);
+        // Rotate to empty
+        let mut wallet = build_test_wallet()?;
+        let mut barren_ks = PastaKeySet::new_empty();
+        let new_next_set = Vec::<Privatekey>::new();
+        let result = wallet.rotate_did_with_prefix(
+            new_first.clone(),
+            &mut barren_ks,
+            Some(new_next_set.clone()),
+            None,
+            None,
+        );
+        assert!(result.is_err());
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_decommission_pass() -> SolDidResult<()> {
+        let mut wallet = build_test_wallet()?;
+        assert!(wallet.prefixes.is_empty());
+        let count = 2i8;
+        let threshold = 1i8;
+        let kset1 = PastaKeySet::new_for(count);
+        let keys_name = "Franks First".to_string();
+        let (_signature, _prefix, _digest) = wallet.new_did(&keys_name, &kset1, threshold, None)?;
+        let new_first = wallet.keys.first().unwrap().prefix().to_string();
+        assert_eq!(wallet.keys_for_prefix(&new_first)?.chain_event_len(), 1);
+        // Decommission keys
+        let mut wallet = build_test_wallet()?;
+        let mut barren_ks = PastaKeySet::new_empty();
+        let result = wallet.decommission_did_with_prefix(new_first.clone(), &mut barren_ks, None);
+        assert!(result.is_ok());
+        remove_test_wallet(wallet)?;
+        Ok(())
+    }
+}
