@@ -3,6 +3,7 @@
 use std::path::PathBuf;
 
 use clap::{crate_description, crate_name, crate_version, value_parser, Arg, ArgAction, Command};
+use solana_clap_v3_utils::input_validators::is_pubkey;
 
 pub const DID_LIST: &str = "did-list";
 pub const KEYS_LIST: &str = "keys-list";
@@ -115,7 +116,9 @@ pub fn command_line() -> Command<'static> {
                 .arg(
                     Arg::new("pda")
                         .short('p')
+                        .required(true)
                         .takes_value(true)
+                        .value_parser(is_pubkey)
                         .help("PDA pubkey string"),
                 ),
         )
@@ -123,9 +126,8 @@ pub fn command_line() -> Command<'static> {
 
 #[cfg(test)]
 mod cli_tests {
-    use std::path::PathBuf;
-
     use super::command_line;
+    use std::path::PathBuf;
 
     #[test]
     fn test_command_simple_did_list_pass() {
@@ -175,5 +177,14 @@ mod cli_tests {
 
         let w: &PathBuf = y.get_one("wallet").unwrap();
         assert_eq!(faux_path, *w);
+    }
+
+    #[test]
+    fn test_did_close() {
+        let cmd = command_line();
+        let faux_dir = "~/dummy";
+        let pda = "AgxPQbWut4owLJEzSiZTkuCxRL1xAa5YRsGy6J85MDQS";
+        let y = cmd.get_matches_from(vec!["soldid", "-w", faux_dir, "did-close", "-p", pda]);
+        assert_eq!(y.subcommand_name().unwrap(), "did-close");
     }
 }
